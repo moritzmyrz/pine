@@ -1,33 +1,10 @@
+import AppKit
 import SwiftUI
 
 struct AddressBarView: View {
     @ObservedObject var viewModel: BrowserViewModel
+    @State private var addressInput = ""
     @FocusState private var isAddressFieldFocused: Bool
-
-    private var urlBinding: Binding<String> {
-        Binding(
-            get: {
-                guard
-                    let selectedTabID = viewModel.selectedTabID,
-                    let index = viewModel.tabs.firstIndex(where: { $0.id == selectedTabID })
-                else {
-                    return ""
-                }
-
-                return viewModel.tabs[index].urlString
-            },
-            set: { newValue in
-                guard
-                    let selectedTabID = viewModel.selectedTabID,
-                    let index = viewModel.tabs.firstIndex(where: { $0.id == selectedTabID })
-                else {
-                    return
-                }
-
-                viewModel.tabs[index].urlString = newValue
-            }
-        )
-    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -51,22 +28,51 @@ struct AddressBarView: View {
                 Image(systemName: "arrow.clockwise")
             }
 
-            TextField("Enter URL", text: urlBinding)
+            TextField("Enter URL", text: $addressInput)
                 .textFieldStyle(.roundedBorder)
                 .focused($isAddressFieldFocused)
                 .onSubmit {
-                    viewModel.loadSelectedTab()
+                    submitAddressBar()
                 }
 
             Button("Go") {
-                viewModel.loadSelectedTab()
+                submitAddressBar()
             }
             .buttonStyle(.borderedProminent)
         }
         .padding(12)
-        .onChange(of: viewModel.addressBarFocusToken) { _ in
-            isAddressFieldFocused = true
+        .onAppear {
+            addressInput = currentTabURL
         }
+        .onChange(of: viewModel.selectedTabID) {
+            addressInput = currentTabURL
+        }
+        .onChange(of: currentTabURL) {
+            guard !isAddressFieldFocused else { return }
+            addressInput = currentTabURL
+        }
+        .onChange(of: isAddressFieldFocused) {
+            if !isAddressFieldFocused {
+                addressInput = currentTabURL
+            }
+        }
+        .onChange(of: viewModel.addressBarFocusToken) {
+            isAddressFieldFocused = true
+            guard viewModel.shouldSelectAllInAddressBar else { return }
+
+            DispatchQueue.main.async {
+                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                viewModel.consumeAddressBarSelectAllRequest()
+            }
+        }
+    }
+
+    private var currentTabURL: String {
+        viewModel.selectedTab?.urlString ?? ""
+    }
+
+    private func submitAddressBar() {
+        viewModel.loadSelectedTab(from: addressInput)
     }
 }
 

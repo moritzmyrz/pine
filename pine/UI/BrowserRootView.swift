@@ -2,10 +2,12 @@ import SwiftUI
 
 struct BrowserRootView: View {
     @StateObject private var viewModel = BrowserViewModel()
+    @State private var isHistoryPresented = false
 
     var body: some View {
         VStack(spacing: 0) {
             AddressBarView(viewModel: viewModel)
+            loadingProgressBar
             Divider()
             tabStrip
             Divider()
@@ -34,7 +36,38 @@ struct BrowserRootView: View {
                     viewModel.closeCurrentTab()
                 }
                 .keyboardShortcut("w", modifiers: .command)
+
+                Button("History") {
+                    isHistoryPresented = true
+                }
             }
+        }
+        .background {
+            Button("Focus Address") {
+                viewModel.requestAddressBarFocus(selectAll: true)
+            }
+            .keyboardShortcut("l", modifiers: .command)
+            .hidden()
+        }
+        .sheet(isPresented: $isHistoryPresented) {
+            HistorySheetView(
+                historyStore: viewModel.historyStore,
+                onSelect: { entry in
+                    viewModel.loadHistoryEntryInSelectedTab(entry)
+                    isHistoryPresented = false
+                }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var loadingProgressBar: some View {
+        if let tab = viewModel.selectedTab, tab.isLoading {
+            ProgressView(value: tab.estimatedProgress)
+                .progressViewStyle(.linear)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
         }
     }
 
@@ -78,6 +111,34 @@ struct BrowserRootView: View {
             }
             .padding(8)
         }
+    }
+}
+
+private struct HistorySheetView: View {
+    @ObservedObject var historyStore: HistoryStore
+    let onSelect: (HistoryEntry) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List(historyStore.entries) { entry in
+                Button {
+                    onSelect(entry)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(entry.title)
+                            .lineLimit(1)
+                        Text(entry.urlString)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+            }
+            .navigationTitle("History")
+        }
+        .frame(minWidth: 520, minHeight: 360)
     }
 }
 

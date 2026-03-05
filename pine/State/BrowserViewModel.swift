@@ -6,21 +6,49 @@ final class BrowserViewModel: ObservableObject {
     @Published var tabs: [Tab]
     @Published var selectedTabID: UUID?
     @Published var addressBarFocusToken = UUID()
+    @Published private(set) var shouldSelectAllInAddressBar = false
+    let historyStore: HistoryStore
 
     // Keep WKWebView instances in the view model so Tab stays plain state data.
     // This works well with SwiftUI value-driven updates on macOS.
     private var webViews: [UUID: WKWebView] = [:]
+    private var webViewObservers: [UUID: WebViewObservers] = [:]
+
+    private struct WebViewObservers {
+        let titleObserver: NSKeyValueObservation
+        let urlObserver: NSKeyValueObservation
+        let isLoadingObserver: NSKeyValueObservation
+        let estimatedProgressObserver: NSKeyValueObservation
+        let canGoBackObserver: NSKeyValueObservation
+        let canGoForwardObserver: NSKeyValueObservation
+
+        func invalidate() {
+            titleObserver.invalidate()
+            urlObserver.invalidate()
+            isLoadingObserver.invalidate()
+            estimatedProgressObserver.invalidate()
+            canGoBackObserver.invalidate()
+            canGoForwardObserver.invalidate()
+        }
+    }
 
     var selectedTab: Tab? {
         guard let selectedTabID else { return nil }
         return tabs.first(where: { $0.id == selectedTabID })
     }
 
-    init() {
+    init(historyStore: HistoryStore = HistoryStore()) {
+        self.historyStore = historyStore
         let firstTab = Tab(urlString: "https://example.com")
         tabs = [firstTab]
         selectedTabID = firstTab.id
         load(urlInput: firstTab.urlString, in: firstTab.id)
+    }
+
+    deinit {
+        for observers in webViewObservers.values {
+            observers.invalidate()
+        }
     }
 
     @discardableResult
@@ -58,6 +86,8 @@ final class BrowserViewModel: ObservableObject {
 
         tabs.removeAll { $0.id == id }
         webViews[id] = nil
+        webViewObservers[id]?.invalidate()
+        webViewObservers[id] = nil
 
         if tabs.isEmpty {
             _ = newBlankTab(shouldSelect: true)
@@ -101,8 +131,13 @@ final class BrowserViewModel: ObservableObject {
         }
     }
 
-    func requestAddressBarFocus() {
+    func requestAddressBarFocus(selectAll: Bool = false) {
+        shouldSelectAllInAddressBar = selectAll
         addressBarFocusToken = UUID()
+    }
+
+    func consumeAddressBarSelectAllRequest() {
+        shouldSelectAllInAddressBar = false
     }
 
     func webView(for tabID: UUID) -> WKWebView {
@@ -112,12 +147,23 @@ final class BrowserViewModel: ObservableObject {
 
         let webView = WKWebView(frame: .zero)
         webViews[tabID] = webView
+        attachObservers(to: webView, tabID: tabID)
         return webView
     }
 
     func loadSelectedTab() {
         guard let selectedTab else { return }
         load(urlInput: selectedTab.urlString, in: selectedTab.id)
+    }
+
+    func loadSelectedTab(from urlInput: String) {
+        guard let selectedTab else { return }
+
+        if let index = tabs.firstIndex(where: { $0.id == selectedTab.id }) {
+            tabs[index].urlString = urlInput
+        }
+
+        load(urlInput: urlInput, in: selectedTab.id)
     }
 
     func goBackSelectedTab() {
@@ -170,6 +216,18 @@ final class BrowserViewModel: ObservableObject {
         tabs[index].canGoForward = webView.canGoForward
     }
 
+    func recordHistoryForCompletedNavigation(tabID: UUID) {
+        guard selectedTabID == tabID else { return }
+        guard let webView = webViews[tabID], let url = webView.url else { return }
+
+        let title = webView.title ?? selectedTab?.title ?? "New Tab"
+        historyStore.addEntry(title: title, urlString: url.absoluteString)
+    }
+
+    func loadHistoryEntryInSelectedTab(_ entry: HistoryEntry) {
+        loadSelectedTab(from: entry.urlString)
+    }
+
     private func load(urlInput: String, in tabID: UUID) {
         guard let url = normalizedURL(from: urlInput) else { return }
 
@@ -201,5 +259,43 @@ final class BrowserViewModel: ObservableObject {
 
     private func looksLikeURL(_ input: String) -> Bool {
         !input.contains(" ") && input.contains(".")
+    }
+
+    private func attachObservers(to webView: WKWebView, tabID: UUID) {
+        guard webViewObservers[tabID] == nil else { return }
+
+        let observers = WebViewObservers(
+            titleObserver: webView.observe(\.title, options: [.new]) { [weak self] webView, _ in
+                self?.syncTabStateOnMain(from: webView, for: tabID)
+            },
+            urlObserver: webView.observe(\.url, options: [.new]) { [weak self] webView, _ in
+                self?.syncTabStateOnMain(from: webView, for: tabID)
+            },
+            isLoadingObserver: webView.observe(\.isLoading, options: [.new]) { [weak self] webView, _ in
+                self?.syncTabStateOnMain(from: webView, for: tabID)
+            },
+            estimatedProgressObserver: webView.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
+                self?.syncTabStateOnMain(from: webView, for: tabID)
+            },
+            canGoBackObserver: webView.observe(\.canGoBack, options: [.new]) { [weak self] webView, _ in
+                self?.syncTabStateOnMain(from: webView, for: tabID)
+            },
+            canGoForwardObserver: webView.observe(\.canGoForward, options: [.new]) { [weak self] webView, _ in
+                self?.syncTabStateOnMain(from: webView, for: tabID)
+            }
+        )
+
+        webViewObservers[tabID] = observers
+    }
+
+    private func syncTabStateOnMain(from webView: WKWebView, for tabID: UUID) {
+        if Thread.isMainThread {
+            syncTabState(from: webView, for: tabID)
+            return
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.syncTabState(from: webView, for: tabID)
+        }
     }
 }
