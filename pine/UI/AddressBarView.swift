@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AddressBarView: View {
     @ObservedObject var viewModel: BrowserViewModel
+    @FocusState private var isAddressFieldFocused: Bool
 
     private var urlBinding: Binding<String> {
         Binding(
@@ -52,6 +53,7 @@ struct AddressBarView: View {
 
             TextField("Enter URL", text: urlBinding)
                 .textFieldStyle(.roundedBorder)
+                .focused($isAddressFieldFocused)
                 .onSubmit {
                     viewModel.loadSelectedTab()
                 }
@@ -62,6 +64,9 @@ struct AddressBarView: View {
             .buttonStyle(.borderedProminent)
         }
         .padding(12)
+        .onChange(of: viewModel.addressBarFocusToken) { _ in
+            isAddressFieldFocused = true
+        }
     }
 }
 

@@ -23,6 +23,19 @@ struct BrowserRootView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .toolbar {
+            ToolbarItemGroup {
+                Button("New Tab") {
+                    viewModel.newTab(focusAddressBar: true)
+                }
+                .keyboardShortcut("t", modifiers: .command)
+
+                Button("Close Tab") {
+                    viewModel.closeCurrentTab()
+                }
+                .keyboardShortcut("w", modifiers: .command)
+            }
+        }
     }
 
     private var tabStrip: some View {
@@ -30,6 +43,11 @@ struct BrowserRootView: View {
             HStack(spacing: 8) {
                 ForEach(viewModel.tabs) { tab in
                     HStack(spacing: 6) {
+                        if tab.isLoading {
+                            Text("...")
+                                .foregroundStyle(.secondary)
+                        }
+
                         Text(tab.title)
                             .lineLimit(1)
 
@@ -51,7 +69,7 @@ struct BrowserRootView: View {
                 }
 
                 Button {
-                    viewModel.newTab()
+                    viewModel.newTab(focusAddressBar: true)
                 } label: {
                     Image(systemName: "plus")
                         .padding(6)

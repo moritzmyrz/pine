@@ -51,5 +51,19 @@ struct WebViewContainer: NSViewRepresentable {
         ) {
             viewModel.syncTabState(from: webView, for: tabID)
         }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            if navigationAction.targetFrame == nil {
+                viewModel.openInNewTab(request: navigationAction.request)
+                decisionHandler(.cancel)
+                return
+            }
+
+            decisionHandler(.allow)
+        }
     }
 }

@@ -5,6 +5,7 @@ import WebKit
 final class BrowserViewModel: ObservableObject {
     @Published var tabs: [Tab]
     @Published var selectedTabID: UUID?
+    @Published var addressBarFocusToken = UUID()
 
     // Keep WKWebView instances in the view model so Tab stays plain state data.
     // This works well with SwiftUI value-driven updates on macOS.
@@ -22,34 +23,86 @@ final class BrowserViewModel: ObservableObject {
         load(urlInput: firstTab.urlString, in: firstTab.id)
     }
 
-    func newTab(urlString: String = "https://example.com") {
+    @discardableResult
+    func newTab(
+        urlString: String = "https://example.com",
+        shouldSelect: Bool = true,
+        shouldLoad: Bool = true,
+        focusAddressBar: Bool = false
+    ) -> UUID {
         let tab = Tab(urlString: urlString)
         tabs.append(tab)
-        selectedTabID = tab.id
-        load(urlInput: urlString, in: tab.id)
+        if shouldSelect {
+            selectedTabID = tab.id
+        }
+
+        if shouldLoad {
+            load(urlInput: urlString, in: tab.id)
+        }
+
+        if focusAddressBar {
+            requestAddressBarFocus()
+        }
+
+        return tab.id
+    }
+
+    @discardableResult
+    func newBlankTab(shouldSelect: Bool = true) -> UUID {
+        newTab(urlString: "about:blank", shouldSelect: shouldSelect, shouldLoad: true)
     }
 
     func closeTab(id: UUID) {
+        guard let closedIndex = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let wasSelected = (selectedTabID == id)
+
         tabs.removeAll { $0.id == id }
         webViews[id] = nil
 
-        guard !tabs.isEmpty else {
-            selectedTabID = nil
+        if tabs.isEmpty {
+            _ = newBlankTab(shouldSelect: true)
             return
         }
 
-        if selectedTabID == id {
-            selectedTabID = tabs[0].id
-        } else if let selectedTabID, tabs.contains(where: { $0.id == selectedTabID }) {
-            self.selectedTabID = selectedTabID
-        } else {
-            selectedTabID = tabs[0].id
+        if wasSelected {
+            let nextIndex = min(closedIndex, tabs.count - 1)
+            selectedTabID = tabs[nextIndex].id
+            return
         }
+
+        if let selectedTabID, tabs.contains(where: { $0.id == selectedTabID }) {
+            return
+        }
+
+        if let firstTab = tabs.first {
+            selectedTabID = firstTab.id
+        }
+    }
+
+    func closeCurrentTab() {
+        guard let selectedTabID else { return }
+        closeTab(id: selectedTabID)
     }
 
     func selectTab(id: UUID) {
         guard tabs.contains(where: { $0.id == id }) else { return }
         selectedTabID = id
+    }
+
+    func openInNewTab(request: URLRequest?) {
+        let tabID = newBlankTab(shouldSelect: true)
+        guard let request else { return }
+
+        let webView = webView(for: tabID)
+        webView.load(request)
+
+        if let url = request.url, let index = tabs.firstIndex(where: { $0.id == tabID }) {
+            tabs[index].urlString = url.absoluteString
+        }
+    }
+
+    func requestAddressBarFocus() {
+        addressBarFocusToken = UUID()
     }
 
     func webView(for tabID: UUID) -> WKWebView {
