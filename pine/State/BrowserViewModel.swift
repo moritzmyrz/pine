@@ -8,11 +8,13 @@ final class BrowserViewModel: ObservableObject {
     @Published var addressBarFocusToken = UUID()
     @Published private(set) var shouldSelectAllInAddressBar = false
     let historyStore: HistoryStore
+    let bookmarksStore: BookmarksStore
 
     // Keep WKWebView instances in the view model so Tab stays plain state data.
     // This works well with SwiftUI value-driven updates on macOS.
     private var webViews: [UUID: WKWebView] = [:]
     private var webViewObservers: [UUID: WebViewObservers] = [:]
+    private var cancellables: Set<AnyCancellable> = []
 
     private struct WebViewObservers {
         let titleObserver: NSKeyValueObservation
@@ -37,12 +39,22 @@ final class BrowserViewModel: ObservableObject {
         return tabs.first(where: { $0.id == selectedTabID })
     }
 
-    init(historyStore: HistoryStore = HistoryStore()) {
+    init(
+        historyStore: HistoryStore = HistoryStore(),
+        bookmarksStore: BookmarksStore = BookmarksStore()
+    ) {
         self.historyStore = historyStore
+        self.bookmarksStore = bookmarksStore
         let firstTab = Tab(urlString: "https://example.com")
         tabs = [firstTab]
         selectedTabID = firstTab.id
         load(urlInput: firstTab.urlString, in: firstTab.id)
+
+        bookmarksStore.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 
     deinit {
@@ -228,6 +240,22 @@ final class BrowserViewModel: ObservableObject {
         loadSelectedTab(from: entry.urlString)
     }
 
+    func loadBookmarkInSelectedTab(_ bookmark: Bookmark) {
+        loadSelectedTab(from: bookmark.urlString)
+    }
+
+    func isCurrentPageBookmarked() -> Bool {
+        guard let urlString = selectedPageURLString() else { return false }
+        return bookmarksStore.bookmark(forURLString: urlString) != nil
+    }
+
+    func toggleBookmarkForSelectedTab() {
+        guard let urlString = selectedPageURLString() else { return }
+
+        let pageTitle = selectedTab?.title ?? ""
+        bookmarksStore.toggleBookmark(title: pageTitle, urlString: urlString)
+    }
+
     private func load(urlInput: String, in tabID: UUID) {
         guard let url = normalizedURL(from: urlInput) else { return }
 
@@ -297,5 +325,19 @@ final class BrowserViewModel: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             self?.syncTabState(from: webView, for: tabID)
         }
+    }
+
+    private func selectedPageURLString() -> String? {
+        guard let selectedTabID else { return nil }
+
+        if let currentURL = webViews[selectedTabID]?.url?.absoluteString, !currentURL.isEmpty {
+            return currentURL
+        }
+
+        if let tabURL = selectedTab?.urlString, !tabURL.isEmpty {
+            return tabURL
+        }
+
+        return nil
     }
 }

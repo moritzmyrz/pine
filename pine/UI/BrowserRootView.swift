@@ -3,6 +3,7 @@ import SwiftUI
 struct BrowserRootView: View {
     @StateObject private var viewModel = BrowserViewModel()
     @State private var isHistoryPresented = false
+    @State private var isBookmarksPresented = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,6 +41,14 @@ struct BrowserRootView: View {
                 Button("History") {
                     isHistoryPresented = true
                 }
+
+                Button(viewModel.isCurrentPageBookmarked() ? "★" : "☆") {
+                    viewModel.toggleBookmarkForSelectedTab()
+                }
+
+                Button("Bookmarks") {
+                    isBookmarksPresented = true
+                }
             }
         }
         .background {
@@ -55,6 +64,15 @@ struct BrowserRootView: View {
                 onSelect: { entry in
                     viewModel.loadHistoryEntryInSelectedTab(entry)
                     isHistoryPresented = false
+                }
+            )
+        }
+        .sheet(isPresented: $isBookmarksPresented) {
+            BookmarksSheetView(
+                bookmarksStore: viewModel.bookmarksStore,
+                onSelect: { bookmark in
+                    viewModel.loadBookmarkInSelectedTab(bookmark)
+                    isBookmarksPresented = false
                 }
             )
         }
@@ -137,6 +155,34 @@ private struct HistorySheetView: View {
                 .buttonStyle(.plain)
             }
             .navigationTitle("History")
+        }
+        .frame(minWidth: 520, minHeight: 360)
+    }
+}
+
+private struct BookmarksSheetView: View {
+    @ObservedObject var bookmarksStore: BookmarksStore
+    let onSelect: (Bookmark) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List(bookmarksStore.bookmarks) { bookmark in
+                Button {
+                    onSelect(bookmark)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(bookmark.title)
+                            .lineLimit(1)
+                        Text(bookmark.urlString)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+            }
+            .navigationTitle("Bookmarks")
         }
         .frame(minWidth: 520, minHeight: 360)
     }
