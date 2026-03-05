@@ -10,13 +10,18 @@ struct BrowserRootView: View {
             tabStrip
             Divider()
 
-            VStack {
-                Spacer()
-                Text("WebView goes here")
-                    .foregroundStyle(.secondary)
-                Spacer()
+            if let selectedTabID = viewModel.selectedTabID {
+                WebViewContainer(viewModel: viewModel, tabID: selectedTabID)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack {
+                    Spacer()
+                    Text("No tab selected")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

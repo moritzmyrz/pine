@@ -30,18 +30,34 @@ struct AddressBarView: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            Button {
+                viewModel.goBackSelectedTab()
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(!(viewModel.selectedTab?.canGoBack ?? false))
+
+            Button {
+                viewModel.goForwardSelectedTab()
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(!(viewModel.selectedTab?.canGoForward ?? false))
+
+            Button {
+                viewModel.reloadSelectedTab()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+
             TextField("Enter URL", text: urlBinding)
                 .textFieldStyle(.roundedBorder)
-
-            Button("Go") {
-                guard
-                    let selectedTabID = viewModel.selectedTabID,
-                    let tab = viewModel.tabs.first(where: { $0.id == selectedTabID })
-                else {
-                    return
+                .onSubmit {
+                    viewModel.loadSelectedTab()
                 }
 
-                print("Go to \(tab.urlString)")
+            Button("Go") {
+                viewModel.loadSelectedTab()
             }
             .buttonStyle(.borderedProminent)
         }
