@@ -9,6 +9,7 @@ final class BrowserViewModel: ObservableObject {
     @Published private(set) var shouldSelectAllInAddressBar = false
     let historyStore: HistoryStore
     let bookmarksStore: BookmarksStore
+    let downloadManager: DownloadManager
 
     // Keep WKWebView instances in the view model so Tab stays plain state data.
     // This works well with SwiftUI value-driven updates on macOS.
@@ -41,10 +42,12 @@ final class BrowserViewModel: ObservableObject {
 
     init(
         historyStore: HistoryStore = HistoryStore(),
-        bookmarksStore: BookmarksStore = BookmarksStore()
+        bookmarksStore: BookmarksStore = BookmarksStore(),
+        downloadManager: DownloadManager = DownloadManager()
     ) {
         self.historyStore = historyStore
         self.bookmarksStore = bookmarksStore
+        self.downloadManager = downloadManager
         let firstTab = Tab(urlString: "https://example.com")
         tabs = [firstTab]
         selectedTabID = firstTab.id

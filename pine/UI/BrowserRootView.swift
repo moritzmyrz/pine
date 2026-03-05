@@ -4,6 +4,7 @@ struct BrowserRootView: View {
     @StateObject private var viewModel = BrowserViewModel()
     @State private var isHistoryPresented = false
     @State private var isBookmarksPresented = false
+    @State private var isDownloadsPresented = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,6 +16,7 @@ struct BrowserRootView: View {
 
             if let selectedTabID = viewModel.selectedTabID {
                 WebViewContainer(viewModel: viewModel, tabID: selectedTabID)
+                    .id(selectedTabID)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 VStack {
@@ -49,6 +51,10 @@ struct BrowserRootView: View {
                 Button("Bookmarks") {
                     isBookmarksPresented = true
                 }
+
+                Button("Downloads") {
+                    isDownloadsPresented = true
+                }
             }
         }
         .background {
@@ -75,6 +81,9 @@ struct BrowserRootView: View {
                     isBookmarksPresented = false
                 }
             )
+        }
+        .sheet(isPresented: $isDownloadsPresented) {
+            DownloadsSheetView(downloadManager: viewModel.downloadManager)
         }
     }
 
@@ -185,6 +194,37 @@ private struct BookmarksSheetView: View {
             .navigationTitle("Bookmarks")
         }
         .frame(minWidth: 520, minHeight: 360)
+    }
+}
+
+private struct DownloadsSheetView: View {
+    @ObservedObject var downloadManager: DownloadManager
+
+    var body: some View {
+        NavigationStack {
+            List(downloadManager.items) { item in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(item.filename)
+                        .lineLimit(1)
+                    if let destination = item.destination {
+                        Text(destination.path)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    HStack(spacing: 8) {
+                        ProgressView(value: item.progress)
+                            .frame(maxWidth: .infinity)
+                        Text(item.status.rawValue.capitalized)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .navigationTitle("Downloads")
+        }
+        .frame(minWidth: 560, minHeight: 360)
     }
 }
 
