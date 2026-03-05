@@ -28,6 +28,18 @@ struct AddressBarView: View {
                 Image(systemName: "arrow.clockwise")
             }
 
+            if let favicon = selectedFavicon {
+                Image(nsImage: favicon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 14, height: 14)
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+            } else {
+                Image(systemName: "globe")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 14, height: 14)
+            }
+
             TextField("Enter URL", text: $addressInput)
                 .textFieldStyle(.roundedBorder)
                 .focused($isAddressFieldFocused)
@@ -69,6 +81,11 @@ struct AddressBarView: View {
 
     private var currentTabURL: String {
         viewModel.selectedTab?.urlString ?? ""
+    }
+
+    private var selectedFavicon: NSImage? {
+        guard let faviconData = viewModel.selectedTab?.faviconData else { return nil }
+        return NSImage(data: faviconData)
     }
 
     private func submitAddressBar() {

@@ -6,6 +6,9 @@ struct Tab: Identifiable {
     var title: String
     var isPrivate: Bool
     var isPinned: Bool
+    var zoomFactor: Double
+    var isReaderModeEnabled: Bool
+    var faviconData: Data?
     var isLoading: Bool
     var estimatedProgress: Double
     var canGoBack: Bool
@@ -17,6 +20,9 @@ struct Tab: Identifiable {
         title: String = "New Tab",
         isPrivate: Bool = false,
         isPinned: Bool = false,
+        zoomFactor: Double = 1.0,
+        isReaderModeEnabled: Bool = false,
+        faviconData: Data? = nil,
         isLoading: Bool = false,
         estimatedProgress: Double = 0,
         canGoBack: Bool = false,
@@ -27,6 +33,9 @@ struct Tab: Identifiable {
         self.title = title
         self.isPrivate = isPrivate
         self.isPinned = isPinned
+        self.zoomFactor = zoomFactor
+        self.isReaderModeEnabled = isReaderModeEnabled
+        self.faviconData = faviconData
         self.isLoading = isLoading
         self.estimatedProgress = estimatedProgress
         self.canGoBack = canGoBack

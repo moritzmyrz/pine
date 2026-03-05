@@ -15,6 +15,8 @@ final class BrowserViewModel: ObservableObject {
     // This works well with SwiftUI value-driven updates on macOS.
     private var webViews: [UUID: WKWebView] = [:]
     private var webViewObservers: [UUID: WebViewObservers] = [:]
+    private var faviconCacheByHost: [String: Data] = [:]
+    private var faviconTasks: [UUID: URLSessionDataTask] = [:]
     private var cancellables: Set<AnyCancellable> = []
 
     private struct WebViewObservers {
@@ -68,6 +70,9 @@ final class BrowserViewModel: ObservableObject {
         for observers in webViewObservers.values {
             observers.invalidate()
         }
+        for task in faviconTasks.values {
+            task.cancel()
+        }
     }
 
     @discardableResult
@@ -114,6 +119,8 @@ final class BrowserViewModel: ObservableObject {
         webViews[id] = nil
         webViewObservers[id]?.invalidate()
         webViewObservers[id] = nil
+        faviconTasks[id]?.cancel()
+        faviconTasks[id] = nil
 
         if tabs.isEmpty {
             _ = newBlankTab(shouldSelect: true, isPrivate: false)
@@ -142,7 +149,10 @@ final class BrowserViewModel: ObservableObject {
             urlString: sourceTab.urlString,
             title: sourceTab.title,
             isPrivate: sourceTab.isPrivate,
-            isPinned: sourceTab.isPinned
+            isPinned: sourceTab.isPinned,
+            zoomFactor: sourceTab.zoomFactor,
+            isReaderModeEnabled: sourceTab.isReaderModeEnabled,
+            faviconData: sourceTab.faviconData
         )
 
         tabs.insert(duplicate, at: min(sourceIndex + 1, tabs.count))
@@ -162,6 +172,8 @@ final class BrowserViewModel: ObservableObject {
             webViews[removedID] = nil
             webViewObservers[removedID]?.invalidate()
             webViewObservers[removedID] = nil
+            faviconTasks[removedID]?.cancel()
+            faviconTasks[removedID] = nil
         }
     }
 
@@ -176,6 +188,8 @@ final class BrowserViewModel: ObservableObject {
             webViews[removedID] = nil
             webViewObservers[removedID]?.invalidate()
             webViewObservers[removedID] = nil
+            faviconTasks[removedID]?.cancel()
+            faviconTasks[removedID] = nil
         }
 
         if let currentSelectedTabID = selectedTabID, !tabs.contains(where: { $0.id == currentSelectedTabID }) {
@@ -238,6 +252,9 @@ final class BrowserViewModel: ObservableObject {
     func selectTab(id: UUID) {
         guard tabs.contains(where: { $0.id == id }) else { return }
         selectedTabID = id
+        if let webView = webViews[id] {
+            applyStoredPageSettings(for: id, in: webView)
+        }
     }
 
     func openInNewTab(request: URLRequest?, fromTabID: UUID?) {
@@ -266,6 +283,7 @@ final class BrowserViewModel: ObservableObject {
 
     func webView(for tabID: UUID) -> WKWebView {
         if let webView = webViews[tabID] {
+            applyStoredPageSettings(for: tabID, in: webView)
             return webView
         }
 
@@ -277,6 +295,7 @@ final class BrowserViewModel: ObservableObject {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webViews[tabID] = webView
         attachObservers(to: webView, tabID: tabID)
+        applyStoredPageSettings(for: tabID, in: webView)
         return webView
     }
 
@@ -330,8 +349,28 @@ final class BrowserViewModel: ObservableObject {
         webView.reload()
     }
 
+    func zoomInSelectedTab() {
+        adjustZoomForSelectedTab(delta: 0.1)
+    }
+
+    func zoomOutSelectedTab() {
+        adjustZoomForSelectedTab(delta: -0.1)
+    }
+
+    func resetZoomSelectedTab() {
+        guard let selectedTabID else { return }
+        setZoomFactor(1.0, for: selectedTabID)
+    }
+
+    func toggleReaderModeForSelectedTab() {
+        guard let selectedTabID, let index = tabs.firstIndex(where: { $0.id == selectedTabID }) else { return }
+        tabs[index].isReaderModeEnabled.toggle()
+        applyReaderModeIfNeeded(for: selectedTabID)
+    }
+
     func syncTabState(from webView: WKWebView, for tabID: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        let previousHost = host(from: tabs[index].urlString)
 
         if let title = webView.title, !title.isEmpty {
             tabs[index].title = title
@@ -343,6 +382,15 @@ final class BrowserViewModel: ObservableObject {
         tabs[index].estimatedProgress = webView.estimatedProgress
         tabs[index].canGoBack = webView.canGoBack
         tabs[index].canGoForward = webView.canGoForward
+
+        let currentHost = host(from: tabs[index].urlString)
+        if currentHost != previousHost {
+            if let currentHost, let cachedData = faviconCacheByHost[currentHost] {
+                tabs[index].faviconData = cachedData
+            } else {
+                tabs[index].faviconData = nil
+            }
+        }
     }
 
     func recordHistoryForCompletedNavigation(tabID: UUID) {
@@ -371,6 +419,34 @@ final class BrowserViewModel: ObservableObject {
 
         let pageTitle = selectedTab?.title ?? ""
         bookmarksStore.toggleBookmark(title: pageTitle, urlString: urlString)
+    }
+
+    func refreshFavicon(for tabID: UUID, from webView: WKWebView) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        guard let pageURL = webView.url else { return }
+        guard let host = pageURL.host?.lowercased(), !host.isEmpty else { return }
+
+        if let cachedData = faviconCacheByHost[host] {
+            tabs[index].faviconData = cachedData
+            return
+        }
+
+        faviconTasks[tabID]?.cancel()
+
+        resolveIconURLFromDOM(webView: webView, pageURL: pageURL) { [weak self] domIconURL in
+            guard let self else { return }
+
+            let fallbackURL = self.faviconFallbackURL(for: pageURL)
+            var candidates: [URL] = []
+            if let domIconURL {
+                candidates.append(domIconURL)
+            }
+            if let fallbackURL {
+                candidates.append(fallbackURL)
+            }
+
+            self.fetchFirstValidFavicon(for: tabID, host: host, candidates: candidates)
+        }
     }
 
     private func load(urlInput: String, in tabID: UUID) {
@@ -456,6 +532,201 @@ final class BrowserViewModel: ObservableObject {
         }
 
         return nil
+    }
+
+    private func adjustZoomForSelectedTab(delta: Double) {
+        guard let selectedTabID else { return }
+        guard let index = tabs.firstIndex(where: { $0.id == selectedTabID }) else { return }
+        let target = tabs[index].zoomFactor + delta
+        setZoomFactor(target, for: selectedTabID)
+    }
+
+    private func setZoomFactor(_ value: Double, for tabID: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        let clamped = min(max(value, 0.5), 3.0)
+        tabs[index].zoomFactor = clamped
+        webViews[tabID]?.pageZoom = clamped
+    }
+
+    private func applyReaderModeIfNeeded(for tabID: UUID) {
+        guard let webView = webViews[tabID] else { return }
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
+        setReaderMode(in: webView, enabled: tab.isReaderModeEnabled)
+    }
+
+    private func resolveIconURLFromDOM(webView: WKWebView, pageURL: URL, completion: @escaping (URL?) -> Void) {
+        let script = """
+        (() => {
+          const selectors = [
+            'link[rel~="apple-touch-icon"]',
+            'link[rel~="apple-touch-icon-precomposed"]',
+            'link[rel~="icon"]',
+            'link[rel="shortcut icon"]'
+          ];
+          for (const selector of selectors) {
+            const element = document.querySelector(selector);
+            if (element && element.href) {
+              return element.href;
+            }
+          }
+          return null;
+        })();
+        """
+
+        webView.evaluateJavaScript(script) { value, _ in
+            guard let iconURLString = value as? String, !iconURLString.isEmpty else {
+                DispatchQueue.main.async {
+                    completion(nil)
+                }
+                return
+            }
+
+            if let directURL = URL(string: iconURLString) {
+                DispatchQueue.main.async {
+                    completion(directURL)
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                completion(URL(string: iconURLString, relativeTo: pageURL)?.absoluteURL)
+            }
+        }
+    }
+
+    private func fetchFirstValidFavicon(for tabID: UUID, host: String, candidates: [URL]) {
+        guard !candidates.isEmpty else { return }
+        let firstCandidate = candidates[0]
+        fetchFavicon(at: firstCandidate, for: tabID, host: host) { [weak self] success in
+            guard let self else { return }
+            guard !success else { return }
+            self.fetchFirstValidFavicon(
+                for: tabID,
+                host: host,
+                candidates: Array(candidates.dropFirst())
+            )
+        }
+    }
+
+    private func fetchFavicon(at url: URL, for tabID: UUID, host: String, completion: @escaping (Bool) -> Void) {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 6
+        request.setValue("image/*", forHTTPHeaderField: "Accept")
+
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self else { return }
+
+            DispatchQueue.main.async {
+                self.faviconTasks[tabID] = nil
+            }
+
+            guard error == nil else {
+                DispatchQueue.main.async {
+                    completion(false)
+                }
+                return
+            }
+
+            guard
+                let response = response as? HTTPURLResponse,
+                (200..<400).contains(response.statusCode),
+                let data,
+                !data.isEmpty
+            else {
+                DispatchQueue.main.async {
+                    completion(false)
+                }
+                return
+            }
+
+            let mimeType = response.mimeType?.lowercased() ?? ""
+            guard mimeType.hasPrefix("image/") || mimeType.contains("icon") else {
+                DispatchQueue.main.async {
+                    completion(false)
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.faviconCacheByHost[host] = data
+                if let index = self.tabs.firstIndex(where: { $0.id == tabID }) {
+                    self.tabs[index].faviconData = data
+                }
+                completion(true)
+            }
+        }
+
+        faviconTasks[tabID] = task
+        task.resume()
+    }
+
+    private func faviconFallbackURL(for pageURL: URL) -> URL? {
+        guard var components = URLComponents(url: pageURL, resolvingAgainstBaseURL: true) else {
+            return nil
+        }
+        components.path = "/favicon.ico"
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
+    private func host(from urlString: String) -> String? {
+        URL(string: urlString)?.host?.lowercased()
+    }
+
+    private func setReaderMode(in webView: WKWebView, enabled: Bool) {
+        let script: String
+        if enabled {
+            script = """
+            (() => {
+              try {
+                const id = 'pine-reader-mode-lite';
+                let style = document.getElementById(id);
+                if (!style) {
+                  style = document.createElement('style');
+                  style.id = id;
+                  document.head.appendChild(style);
+                }
+                style.textContent = `
+                  html, body {
+                    max-width: 760px !important;
+                    margin: 0 auto !important;
+                    padding: 0 16px !important;
+                    font-size: 19px !important;
+                    line-height: 1.7 !important;
+                    word-break: break-word !important;
+                  }
+                  img, video, iframe, table, pre {
+                    max-width: 100% !important;
+                  }
+                  pre, code {
+                    font-size: 0.9em !important;
+                    line-height: 1.5 !important;
+                  }
+                `;
+              } catch (_) {}
+            })();
+            """
+        } else {
+            script = """
+            (() => {
+              try {
+                const style = document.getElementById('pine-reader-mode-lite');
+                if (style) {
+                  style.remove();
+                }
+              } catch (_) {}
+            })();
+            """
+        }
+
+        webView.evaluateJavaScript(script, completionHandler: nil)
+    }
+
+    func applyStoredPageSettings(for tabID: UUID, in webView: WKWebView) {
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
+        webView.pageZoom = tab.zoomFactor
+        setReaderMode(in: webView, enabled: tab.isReaderModeEnabled)
     }
 
     private func normalizePinnedOrdering() {

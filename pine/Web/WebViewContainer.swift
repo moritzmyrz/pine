@@ -41,6 +41,8 @@ struct WebViewContainer: NSViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             viewModel.syncTabState(from: webView, for: tabID)
             viewModel.recordHistoryForCompletedNavigation(tabID: tabID)
+            viewModel.refreshFavicon(for: tabID, from: webView)
+            viewModel.applyStoredPageSettings(for: tabID, in: webView)
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {

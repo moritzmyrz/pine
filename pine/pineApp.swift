@@ -91,6 +91,29 @@ struct pineApp: App {
                     .keyboardShortcut(KeyEquivalent(Character("\(index)")), modifiers: .command)
                 }
             }
+
+            CommandMenu("Reading") {
+                Button("Zoom In") {
+                    NotificationCenter.default.post(name: .pineZoomIn, object: nil)
+                }
+                .keyboardShortcut("=", modifiers: .command)
+
+                Button("Zoom Out") {
+                    NotificationCenter.default.post(name: .pineZoomOut, object: nil)
+                }
+                .keyboardShortcut("-", modifiers: .command)
+
+                Button("Actual Size") {
+                    NotificationCenter.default.post(name: .pineZoomReset, object: nil)
+                }
+                .keyboardShortcut("0", modifiers: .command)
+
+                Divider()
+
+                Button("Toggle Reader Mode (Lite)") {
+                    NotificationCenter.default.post(name: .pineToggleReaderMode, object: nil)
+                }
+            }
         }
     }
 }

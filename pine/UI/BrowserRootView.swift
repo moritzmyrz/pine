@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -66,6 +67,22 @@ struct BrowserRootView: View {
 
                     Button("Downloads") {
                         isDownloadsPresented = true
+                    }
+
+                    Menu("Reading") {
+                        Button("Zoom In") {
+                            viewModel.zoomInSelectedTab()
+                        }
+                        Button("Zoom Out") {
+                            viewModel.zoomOutSelectedTab()
+                        }
+                        Button("Actual Size") {
+                            viewModel.resetZoomSelectedTab()
+                        }
+                        Divider()
+                        Button(readerModeButtonTitle) {
+                            viewModel.toggleReaderModeForSelectedTab()
+                        }
                     }
                 }
             }
@@ -144,6 +161,18 @@ struct BrowserRootView: View {
             guard let index = notification.userInfo?["index"] as? Int else { return }
             viewModel.selectTab(atOneBasedIndex: index)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .pineZoomIn)) { _ in
+            viewModel.zoomInSelectedTab()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pineZoomOut)) { _ in
+            viewModel.zoomOutSelectedTab()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pineZoomReset)) { _ in
+            viewModel.resetZoomSelectedTab()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pineToggleReaderMode)) { _ in
+            viewModel.toggleReaderModeForSelectedTab()
+        }
     }
 
     @ViewBuilder
@@ -176,12 +205,27 @@ struct BrowserRootView: View {
                 ForEach(viewModel.sortedTabs) { tab in
                     HStack(spacing: 6) {
                         if tab.isPinned {
-                            Text(pinnedTabSymbol(for: tab))
-                                .font(.caption.weight(.semibold))
-                                .frame(width: 18, height: 18)
-                                .background(Color.secondary.opacity(0.14))
-                                .clipShape(Circle())
+                            if let favicon = faviconImage(for: tab) {
+                                Image(nsImage: favicon)
+                                    .resizable()
+                                    .interpolation(.high)
+                                    .frame(width: 16, height: 16)
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                            } else {
+                                Text(pinnedTabSymbol(for: tab))
+                                    .font(.caption.weight(.semibold))
+                                    .frame(width: 18, height: 18)
+                                    .background(Color.secondary.opacity(0.14))
+                                    .clipShape(Circle())
+                            }
                         } else {
+                            if let favicon = faviconImage(for: tab) {
+                                Image(nsImage: favicon)
+                                    .resizable()
+                                    .interpolation(.high)
+                                    .frame(width: 14, height: 14)
+                                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                            }
                             if tab.isLoading {
                                 Text("...")
                                     .foregroundStyle(.secondary)
@@ -346,6 +390,15 @@ struct BrowserRootView: View {
         }
 
         return "•"
+    }
+
+    private func faviconImage(for tab: Tab) -> NSImage? {
+        guard let faviconData = tab.faviconData else { return nil }
+        return NSImage(data: faviconData)
+    }
+
+    private var readerModeButtonTitle: String {
+        (viewModel.selectedTab?.isReaderModeEnabled == true) ? "Disable Reader Mode (Lite)" : "Enable Reader Mode (Lite)"
     }
 }
 
