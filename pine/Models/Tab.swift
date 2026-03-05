@@ -5,6 +5,7 @@ struct Tab: Identifiable {
     var urlString: String
     var title: String
     var isPrivate: Bool
+    var isPinned: Bool
     var isLoading: Bool
     var estimatedProgress: Double
     var canGoBack: Bool
@@ -15,6 +16,7 @@ struct Tab: Identifiable {
         urlString: String,
         title: String = "New Tab",
         isPrivate: Bool = false,
+        isPinned: Bool = false,
         isLoading: Bool = false,
         estimatedProgress: Double = 0,
         canGoBack: Bool = false,
@@ -24,6 +26,7 @@ struct Tab: Identifiable {
         self.urlString = urlString
         self.title = title
         self.isPrivate = isPrivate
+        self.isPinned = isPinned
         self.isLoading = isLoading
         self.estimatedProgress = estimatedProgress
         self.canGoBack = canGoBack

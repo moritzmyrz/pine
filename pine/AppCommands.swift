@@ -9,4 +9,8 @@ extension Notification.Name {
     static let pineGoForward = Notification.Name("pine.goForward")
     static let pineShowHistory = Notification.Name("pine.showHistory")
     static let pineShowBookmarks = Notification.Name("pine.showBookmarks")
+    static let pineShowTabSearch = Notification.Name("pine.showTabSearch")
+    static let pineCycleTabsBackward = Notification.Name("pine.cycleTabsBackward")
+    static let pineCycleTabsForward = Notification.Name("pine.cycleTabsForward")
+    static let pineSelectTabAtIndex = Notification.Name("pine.selectTabAtIndex")
 }

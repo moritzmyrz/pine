@@ -61,6 +61,36 @@ struct pineApp: App {
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
             }
+
+            CommandMenu("Tabs") {
+                Button("Tab Search") {
+                    NotificationCenter.default.post(name: .pineShowTabSearch, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+
+                Button("Previous Tab") {
+                    NotificationCenter.default.post(name: .pineCycleTabsBackward, object: nil)
+                }
+                .keyboardShortcut("[", modifiers: [.command, .shift])
+
+                Button("Next Tab") {
+                    NotificationCenter.default.post(name: .pineCycleTabsForward, object: nil)
+                }
+                .keyboardShortcut("]", modifiers: [.command, .shift])
+
+                Divider()
+
+                ForEach(1...9, id: \.self) { index in
+                    Button("Select Tab \(index)") {
+                        NotificationCenter.default.post(
+                            name: .pineSelectTabAtIndex,
+                            object: nil,
+                            userInfo: ["index": index]
+                        )
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index)")), modifiers: .command)
+                }
+            }
         }
     }
 }

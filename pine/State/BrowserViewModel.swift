@@ -40,6 +40,10 @@ final class BrowserViewModel: ObservableObject {
         return tabs.first(where: { $0.id == selectedTabID })
     }
 
+    var sortedTabs: [Tab] {
+        tabs
+    }
+
     init(
         historyStore: HistoryStore = HistoryStore(),
         bookmarksStore: BookmarksStore = BookmarksStore(),
@@ -76,6 +80,7 @@ final class BrowserViewModel: ObservableObject {
     ) -> UUID {
         let tab = Tab(urlString: urlString, isPrivate: isPrivate)
         tabs.append(tab)
+        normalizePinnedOrdering()
         if shouldSelect {
             selectedTabID = tab.id
         }
@@ -127,6 +132,101 @@ final class BrowserViewModel: ObservableObject {
 
         if let firstTab = tabs.first {
             selectedTabID = firstTab.id
+        }
+    }
+
+    func duplicateTab(id: UUID) {
+        guard let sourceIndex = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let sourceTab = tabs[sourceIndex]
+        let duplicate = Tab(
+            urlString: sourceTab.urlString,
+            title: sourceTab.title,
+            isPrivate: sourceTab.isPrivate,
+            isPinned: sourceTab.isPinned
+        )
+
+        tabs.insert(duplicate, at: min(sourceIndex + 1, tabs.count))
+        normalizePinnedOrdering()
+        selectedTabID = duplicate.id
+        load(urlInput: sourceTab.urlString, in: duplicate.id)
+    }
+
+    func closeOtherTabs(keeping id: UUID) {
+        guard tabs.contains(where: { $0.id == id }) else { return }
+
+        let removedIDs = tabs.filter { $0.id != id }.map(\.id)
+        tabs.removeAll { $0.id != id }
+        selectedTabID = id
+
+        for removedID in removedIDs {
+            webViews[removedID] = nil
+            webViewObservers[removedID]?.invalidate()
+            webViewObservers[removedID] = nil
+        }
+    }
+
+    func closeTabsToRight(of id: UUID) {
+        guard let tabIndex = tabs.firstIndex(where: { $0.id == id }) else { return }
+        guard tabIndex < tabs.count - 1 else { return }
+        let idsToRemove = tabs[(tabIndex + 1)...].map(\.id)
+
+        tabs.removeAll { idsToRemove.contains($0.id) }
+
+        for removedID in idsToRemove {
+            webViews[removedID] = nil
+            webViewObservers[removedID]?.invalidate()
+            webViewObservers[removedID] = nil
+        }
+
+        if let currentSelectedTabID = selectedTabID, !tabs.contains(where: { $0.id == currentSelectedTabID }) {
+            selectedTabID = id
+        }
+    }
+
+    func setTabPinned(id: UUID, isPinned: Bool) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        tabs[index].isPinned = isPinned
+        normalizePinnedOrdering()
+    }
+
+    func reorderTab(draggedID: UUID, before targetID: UUID) {
+        guard draggedID != targetID else { return }
+        guard let sourceIndex = tabs.firstIndex(where: { $0.id == draggedID }) else { return }
+        guard let destinationIndex = tabs.firstIndex(where: { $0.id == targetID }) else { return }
+
+        let movedTab = tabs.remove(at: sourceIndex)
+        let adjustedDestination = sourceIndex < destinationIndex ? destinationIndex - 1 : destinationIndex
+        tabs.insert(movedTab, at: adjustedDestination)
+        normalizePinnedOrdering()
+    }
+
+    func selectTab(atOneBasedIndex index: Int) {
+        guard index >= 1 else { return }
+        guard index <= tabs.count else { return }
+        selectedTabID = tabs[index - 1].id
+    }
+
+    func cycleTab(forward: Bool) {
+        guard let selectedTabID else { return }
+        guard let currentIndex = tabs.firstIndex(where: { $0.id == selectedTabID }) else { return }
+        guard !tabs.isEmpty else { return }
+
+        let nextIndex: Int
+        if forward {
+            nextIndex = (currentIndex + 1) % tabs.count
+        } else {
+            nextIndex = (currentIndex - 1 + tabs.count) % tabs.count
+        }
+        self.selectedTabID = tabs[nextIndex].id
+    }
+
+    func tabsMatching(query: String) -> [Tab] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return tabs }
+
+        let lowered = trimmedQuery.lowercased()
+        return tabs.filter { tab in
+            tab.title.lowercased().contains(lowered) || tab.urlString.lowercased().contains(lowered)
         }
     }
 
@@ -356,5 +456,11 @@ final class BrowserViewModel: ObservableObject {
         }
 
         return nil
+    }
+
+    private func normalizePinnedOrdering() {
+        let pinnedTabs = tabs.filter(\.isPinned)
+        let unpinnedTabs = tabs.filter { !$0.isPinned }
+        tabs = pinnedTabs + unpinnedTabs
     }
 }
