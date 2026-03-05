@@ -71,9 +71,10 @@ final class BrowserViewModel: ObservableObject {
         urlString: String = "https://example.com",
         shouldSelect: Bool = true,
         shouldLoad: Bool = true,
-        focusAddressBar: Bool = false
+        focusAddressBar: Bool = false,
+        isPrivate: Bool = false
     ) -> UUID {
-        let tab = Tab(urlString: urlString)
+        let tab = Tab(urlString: urlString, isPrivate: isPrivate)
         tabs.append(tab)
         if shouldSelect {
             selectedTabID = tab.id
@@ -91,8 +92,13 @@ final class BrowserViewModel: ObservableObject {
     }
 
     @discardableResult
-    func newBlankTab(shouldSelect: Bool = true) -> UUID {
-        newTab(urlString: "about:blank", shouldSelect: shouldSelect, shouldLoad: true)
+    func newBlankTab(shouldSelect: Bool = true, isPrivate: Bool = false) -> UUID {
+        newTab(urlString: "about:blank", shouldSelect: shouldSelect, shouldLoad: true, isPrivate: isPrivate)
+    }
+
+    @discardableResult
+    func newPrivateTab(urlString: String = "https://example.com", focusAddressBar: Bool = false) -> UUID {
+        newTab(urlString: urlString, focusAddressBar: focusAddressBar, isPrivate: true)
     }
 
     func closeTab(id: UUID) {
@@ -105,7 +111,7 @@ final class BrowserViewModel: ObservableObject {
         webViewObservers[id] = nil
 
         if tabs.isEmpty {
-            _ = newBlankTab(shouldSelect: true)
+            _ = newBlankTab(shouldSelect: true, isPrivate: false)
             return
         }
 
@@ -134,8 +140,11 @@ final class BrowserViewModel: ObservableObject {
         selectedTabID = id
     }
 
-    func openInNewTab(request: URLRequest?) {
-        let tabID = newBlankTab(shouldSelect: true)
+    func openInNewTab(request: URLRequest?, fromTabID: UUID?) {
+        let shouldUsePrivate = fromTabID.flatMap { sourceID in
+            tabs.first(where: { $0.id == sourceID })?.isPrivate
+        } ?? false
+        let tabID = newBlankTab(shouldSelect: true, isPrivate: shouldUsePrivate)
         guard let request else { return }
 
         let webView = webView(for: tabID)
@@ -160,7 +169,12 @@ final class BrowserViewModel: ObservableObject {
             return webView
         }
 
-        let webView = WKWebView(frame: .zero)
+        let configuration = WKWebViewConfiguration()
+        if tabs.first(where: { $0.id == tabID })?.isPrivate == true {
+            configuration.websiteDataStore = .nonPersistent()
+        }
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
         webViews[tabID] = webView
         attachObservers(to: webView, tabID: tabID)
         return webView

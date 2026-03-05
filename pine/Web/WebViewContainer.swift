@@ -66,7 +66,7 @@ struct WebViewContainer: NSViewRepresentable {
             }
 
             if navigationAction.targetFrame == nil {
-                viewModel.openInNewTab(request: navigationAction.request)
+                viewModel.openInNewTab(request: navigationAction.request, fromTabID: tabID)
                 decisionHandler(.cancel)
                 return
             }

@@ -14,10 +14,14 @@ struct BrowserRootView: View {
             tabStrip
             Divider()
 
-            if let selectedTabID = viewModel.selectedTabID {
-                WebViewContainer(viewModel: viewModel, tabID: selectedTabID)
-                    .id(selectedTabID)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if let selectedTab = viewModel.selectedTab {
+                if selectedTab.urlString == "about:blank" {
+                    blankTabState
+                } else {
+                    WebViewContainer(viewModel: viewModel, tabID: selectedTab.id)
+                        .id(selectedTab.id)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } else {
                 VStack {
                     Spacer()
@@ -33,12 +37,14 @@ struct BrowserRootView: View {
                 Button("New Tab") {
                     viewModel.newTab(focusAddressBar: true)
                 }
-                .keyboardShortcut("t", modifiers: .command)
+
+                Button("New Private Tab") {
+                    viewModel.newPrivateTab(focusAddressBar: true)
+                }
 
                 Button("Close Tab") {
                     viewModel.closeCurrentTab()
                 }
-                .keyboardShortcut("w", modifiers: .command)
 
                 Button("History") {
                     isHistoryPresented = true
@@ -85,6 +91,30 @@ struct BrowserRootView: View {
         .sheet(isPresented: $isDownloadsPresented) {
             DownloadsSheetView(downloadManager: viewModel.downloadManager)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .pineNewTab)) { _ in
+            viewModel.newTab(focusAddressBar: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pineNewPrivateTab)) { _ in
+            viewModel.newPrivateTab(focusAddressBar: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pineCloseTab)) { _ in
+            viewModel.closeCurrentTab()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pineReload)) { _ in
+            viewModel.reloadSelectedTab()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pineGoBack)) { _ in
+            viewModel.goBackSelectedTab()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pineGoForward)) { _ in
+            viewModel.goForwardSelectedTab()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pineShowHistory)) { _ in
+            isHistoryPresented = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pineShowBookmarks)) { _ in
+            isBookmarksPresented = true
+        }
     }
 
     @ViewBuilder
@@ -94,8 +124,21 @@ struct BrowserRootView: View {
                 .progressViewStyle(.linear)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+                .padding(.vertical, 8)
         }
+    }
+
+    private var blankTabState: some View {
+        VStack(spacing: 8) {
+            Text("New Tab")
+                .font(.title2)
+            Text("Type a URL or search term in the address bar to start browsing.")
+                .foregroundStyle(.secondary)
+            Text("Tip: Press Cmd+L to focus the address bar.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var tabStrip: some View {
@@ -106,6 +149,15 @@ struct BrowserRootView: View {
                         if tab.isLoading {
                             Text("...")
                                 .foregroundStyle(.secondary)
+                        }
+
+                        if tab.isPrivate {
+                            Text("Private")
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.purple.opacity(0.2))
+                                .clipShape(Capsule())
                         }
 
                         Text(tab.title)
@@ -163,6 +215,15 @@ private struct HistorySheetView: View {
                 }
                 .buttonStyle(.plain)
             }
+            .overlay {
+                if historyStore.entries.isEmpty {
+                    ContentUnavailableView(
+                        "No History Yet",
+                        systemImage: "clock.arrow.circlepath",
+                        description: Text("Visited pages will appear here.")
+                    )
+                }
+            }
             .navigationTitle("History")
         }
         .frame(minWidth: 520, minHeight: 360)
@@ -190,6 +251,15 @@ private struct BookmarksSheetView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
+            }
+            .overlay {
+                if bookmarksStore.bookmarks.isEmpty {
+                    ContentUnavailableView(
+                        "No Bookmarks Yet",
+                        systemImage: "bookmark",
+                        description: Text("Use the star button in the toolbar to save pages.")
+                    )
+                }
             }
             .navigationTitle("Bookmarks")
         }
