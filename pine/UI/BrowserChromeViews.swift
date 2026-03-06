@@ -76,6 +76,12 @@ struct BrowserTopBar: View {
             TextField("Search or enter website name", text: $addressInput)
                 .textFieldStyle(.plain)
                 .focused(addressFieldFocus)
+                .onTapGesture {
+                    addressFieldFocus.wrappedValue = true
+                    DispatchQueue.main.async {
+                        NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                    }
+                }
                 .onSubmit {
                     submitAddressBar()
                 }

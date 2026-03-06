@@ -7,12 +7,11 @@ struct BrowserRootView: View {
     @State private var draggedTabID: UUID?
     @State private var addressInput = ""
     @State private var isSiteSettingsPresented = false
-    @State private var isTabsOverviewPresented = false
     @State private var shouldRestoreAddressFocusAfterPalette = false
     @FocusState private var isAddressFieldFocused: Bool
 
     init() {
-        let browserViewModel = BrowserViewModel()
+        let browserViewModel = BrowserViewModel(shouldRestoreSession: WindowLaunchState.consumeShouldRestoreSession())
         _viewModel = StateObject(wrappedValue: browserViewModel)
         _commandPaletteViewModel = StateObject(
             wrappedValue: CommandPaletteViewModel(browserViewModel: browserViewModel)
@@ -69,14 +68,21 @@ struct BrowserRootView: View {
             } message: { profile in
                 Text("This removes the profile and its stored website data. Tabs in \(profile.name) will be closed.")
             }
-            .onReceive(NotificationCenter.default.publisher(for: .pineShowHistory)) { _ in
-                viewModel.store.isHistoryPresented = true
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .pineShowBookmarks)) { _ in
-                viewModel.store.isBookmarksPresented = true
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .pineShowTabSearch)) { _ in
-                isTabsOverviewPresented = true
+            .background(
+                WindowObserver { window in
+                    viewModel.setTargetWindowNumber(window?.windowNumber)
+                    viewModel.onRequestWindowClose = { [weak window] in
+                        if let window {
+                            window.performClose(nil)
+                        } else {
+                            NSApp.keyWindow?.performClose(nil)
+                        }
+                    }
+                }
+            )
+            .onDisappear {
+                viewModel.setTargetWindowNumber(nil)
+                viewModel.onRequestWindowClose = nil
             }
     }
 
@@ -361,8 +367,8 @@ struct BrowserRootView: View {
 
     private var tabsOverviewSheetBinding: Binding<Bool> {
         Binding(
-            get: { isTabsOverviewPresented },
-            set: { isTabsOverviewPresented = $0 }
+            get: { viewModel.store.isTabSearchPresented },
+            set: { viewModel.store.isTabSearchPresented = $0 }
         )
     }
 
@@ -386,6 +392,34 @@ struct BrowserRootView: View {
 
     private func submitAddressBar() {
         viewModel.loadSelectedTab(from: addressInput)
+    }
+}
+
+private enum WindowLaunchState {
+    private static var hasCreatedPrimaryWindow = false
+
+    static func consumeShouldRestoreSession() -> Bool {
+        guard !hasCreatedPrimaryWindow else { return false }
+        hasCreatedPrimaryWindow = true
+        return true
+    }
+}
+
+private struct WindowObserver: NSViewRepresentable {
+    let onWindowChange: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async {
+            onWindowChange(view.window)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            onWindowChange(nsView.window)
+        }
     }
 }
 
