@@ -4,14 +4,6 @@ import UniformTypeIdentifiers
 
 struct BrowserRootView: View {
     @StateObject private var viewModel = BrowserViewModel()
-    @State private var isHistoryPresented = false
-    @State private var isBookmarksPresented = false
-    @State private var isDownloadsPresented = false
-    @State private var isSettingsPresented = false
-    @State private var isProfileManagementPresented = false
-    @State private var profilePendingDeletion: Profile?
-    @State private var isTabSearchPresented = false
-    @State private var tabSearchQuery = ""
     @State private var draggedTabID: UUID?
     @FocusState private var isTabSearchFieldFocused: Bool
 
@@ -21,57 +13,57 @@ struct BrowserRootView: View {
 
     private var configuredRootView: some View {
         rootLayout
-            .animation(.easeInOut(duration: 0.15), value: isTabSearchPresented)
-            .sheet(isPresented: $isHistoryPresented) {
+            .animation(.easeInOut(duration: 0.15), value: viewModel.store.isTabSearchPresented)
+            .sheet(isPresented: historySheetBinding) {
                 HistorySheetView(
                     historyStore: viewModel.historyStore,
                     onSelect: { entry in
                         viewModel.loadHistoryEntryInSelectedTab(entry)
-                        isHistoryPresented = false
+                        viewModel.store.isHistoryPresented = false
                     }
                 )
             }
-            .sheet(isPresented: $isBookmarksPresented) {
+            .sheet(isPresented: bookmarksSheetBinding) {
                 BookmarksSheetView(
                     bookmarksStore: viewModel.bookmarksStore,
                     onSelect: { bookmark in
                         viewModel.loadBookmarkInSelectedTab(bookmark)
-                        isBookmarksPresented = false
+                        viewModel.store.isBookmarksPresented = false
                     }
                 )
             }
-            .sheet(isPresented: $isDownloadsPresented) {
+            .sheet(isPresented: downloadsSheetBinding) {
                 DownloadsSheetView(downloadManager: viewModel.downloadManager)
             }
-            .sheet(isPresented: $isSettingsPresented) {
+            .sheet(isPresented: settingsSheetBinding) {
                 SettingsSheetView(viewModel: viewModel)
             }
-            .sheet(isPresented: $isProfileManagementPresented) {
+            .sheet(isPresented: profileManagementSheetBinding) {
                 ProfileManagementSheet(
                     viewModel: viewModel,
-                    profilePendingDeletion: $profilePendingDeletion
+                    profilePendingDeletion: profilePendingDeletionBinding
                 )
             }
-            .alert("Delete Profile?", isPresented: profileDeleteConfirmationBinding, presenting: profilePendingDeletion) { profile in
+            .alert("Delete Profile?", isPresented: profileDeleteConfirmationBinding, presenting: viewModel.store.profilePendingDeletion) { profile in
                 Button("Delete", role: .destructive) {
                     viewModel.deleteProfile(id: profile.id)
-                    profilePendingDeletion = nil
+                    viewModel.store.profilePendingDeletion = nil
                 }
                 Button("Cancel", role: .cancel) {
-                    profilePendingDeletion = nil
+                    viewModel.store.profilePendingDeletion = nil
                 }
             } message: { profile in
                 Text("This removes the profile and its stored website data. Tabs in \(profile.name) will be closed.")
             }
             .onReceive(NotificationCenter.default.publisher(for: .pineShowHistory)) { _ in
-                isHistoryPresented = true
+                viewModel.store.isHistoryPresented = true
             }
             .onReceive(NotificationCenter.default.publisher(for: .pineShowBookmarks)) { _ in
-                isBookmarksPresented = true
+                viewModel.store.isBookmarksPresented = true
             }
             .onReceive(NotificationCenter.default.publisher(for: .pineShowTabSearch)) { _ in
-                tabSearchQuery = ""
-                isTabSearchPresented = true
+                viewModel.store.tabSearchQuery = ""
+                viewModel.store.isTabSearchPresented = true
                 isTabSearchFieldFocused = true
             }
     }
@@ -103,11 +95,12 @@ struct BrowserRootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
-                if viewModel.downloadManager.shouldShowShelf {
+                if viewModel.downloadController.shouldShowShelf {
                     Divider()
                     DownloadsShelfView(
                         downloadManager: viewModel.downloadManager,
-                        openDownloadsSheet: { isDownloadsPresented = true }
+                        openDownloadsSheet: { viewModel.downloadController.showDownloadsSheet() },
+                        closeShelf: { viewModel.downloadController.dismissShelf() }
                     )
                 }
             }
@@ -128,7 +121,7 @@ struct BrowserRootView: View {
                     }
 
                     Button("History") {
-                        isHistoryPresented = true
+                        viewModel.store.isHistoryPresented = true
                     }
 
                     Button(viewModel.isCurrentPageBookmarked() ? "★" : "☆") {
@@ -136,15 +129,15 @@ struct BrowserRootView: View {
                     }
 
                     Button("Bookmarks") {
-                        isBookmarksPresented = true
+                        viewModel.store.isBookmarksPresented = true
                     }
 
                     Button("Downloads") {
-                        isDownloadsPresented = true
+                        viewModel.downloadController.showDownloadsSheet()
                     }
 
                     Button("Settings") {
-                        isSettingsPresented = true
+                        viewModel.store.isSettingsPresented = true
                     }
 
                     pageActionsToolbarMenu
@@ -160,7 +153,7 @@ struct BrowserRootView: View {
                 .hidden()
             }
 
-            if isTabSearchPresented {
+            if viewModel.store.isTabSearchPresented {
                 tabSearchOverlay
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
                     .zIndex(10)
@@ -321,11 +314,11 @@ struct BrowserRootView: View {
             Color.black.opacity(0.28)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    isTabSearchPresented = false
+                    viewModel.store.isTabSearchPresented = false
                 }
 
             VStack(spacing: 10) {
-                TextField("Search tabs by title or URL", text: $tabSearchQuery)
+                TextField("Search tabs by title or URL", text: tabSearchQueryBinding)
                     .textFieldStyle(.roundedBorder)
                     .focused($isTabSearchFieldFocused)
 
@@ -340,7 +333,7 @@ struct BrowserRootView: View {
                             ForEach(filteredTabsForSearch) { tab in
                                 Button {
                                     viewModel.selectTab(id: tab.id)
-                                    isTabSearchPresented = false
+                                    viewModel.store.isTabSearchPresented = false
                                 } label: {
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(tab.title)
@@ -373,12 +366,12 @@ struct BrowserRootView: View {
             isTabSearchFieldFocused = true
         }
         .onExitCommand {
-            isTabSearchPresented = false
+            viewModel.store.isTabSearchPresented = false
         }
     }
 
     private var filteredTabsForSearch: [Tab] {
-        viewModel.tabsMatching(query: tabSearchQuery)
+        viewModel.tabsMatching(query: viewModel.store.tabSearchQuery)
     }
 
     private func isRightMostTab(_ id: UUID) -> Bool {
@@ -405,10 +398,10 @@ struct BrowserRootView: View {
 
     private var profileDeleteConfirmationBinding: Binding<Bool> {
         Binding(
-            get: { profilePendingDeletion != nil },
+            get: { viewModel.store.profilePendingDeletion != nil },
             set: { shouldPresent in
                 if !shouldPresent {
-                    profilePendingDeletion = nil
+                    viewModel.store.profilePendingDeletion = nil
                 }
             }
         )
@@ -426,7 +419,7 @@ struct BrowserRootView: View {
             }
             Divider()
             Button("Manage Profiles...") {
-                isProfileManagementPresented = true
+                viewModel.store.isProfileManagementPresented = true
             }
         } label: {
             Text("Profile: \(viewModel.currentProfile?.name ?? "Unknown")")
@@ -497,6 +490,55 @@ struct BrowserRootView: View {
         viewModel.sessionSettings.includePrivateTabsInSession
             ? "Disable Private Tabs in Session"
             : "Enable Private Tabs in Session"
+    }
+
+    private var historySheetBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.store.isHistoryPresented },
+            set: { viewModel.store.isHistoryPresented = $0 }
+        )
+    }
+
+    private var bookmarksSheetBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.store.isBookmarksPresented },
+            set: { viewModel.store.isBookmarksPresented = $0 }
+        )
+    }
+
+    private var downloadsSheetBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.store.isDownloadsPresented },
+            set: { viewModel.store.isDownloadsPresented = $0 }
+        )
+    }
+
+    private var settingsSheetBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.store.isSettingsPresented },
+            set: { viewModel.store.isSettingsPresented = $0 }
+        )
+    }
+
+    private var profileManagementSheetBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.store.isProfileManagementPresented },
+            set: { viewModel.store.isProfileManagementPresented = $0 }
+        )
+    }
+
+    private var profilePendingDeletionBinding: Binding<Profile?> {
+        Binding(
+            get: { viewModel.store.profilePendingDeletion },
+            set: { viewModel.store.profilePendingDeletion = $0 }
+        )
+    }
+
+    private var tabSearchQueryBinding: Binding<String> {
+        Binding(
+            get: { viewModel.store.tabSearchQuery },
+            set: { viewModel.store.tabSearchQuery = $0 }
+        )
     }
 }
 
@@ -646,6 +688,7 @@ private struct DownloadsSheetView: View {
 private struct DownloadsShelfView: View {
     @ObservedObject var downloadManager: DownloadManager
     let openDownloadsSheet: () -> Void
+    let closeShelf: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -663,6 +706,15 @@ private struct DownloadsShelfView: View {
                 openDownloadsSheet()
             }
             .buttonStyle(.bordered)
+
+            Button {
+                closeShelf()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.bold())
+            }
+            .buttonStyle(.plain)
+            .help("Hide downloads shelf")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

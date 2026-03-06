@@ -1,0 +1,209 @@
+import Foundation
+
+final class TabManager {
+    private struct ClosedTabState {
+        let profileID: UUID
+        let urlString: String
+        let title: String
+        let isPrivate: Bool
+        let isPinned: Bool
+    }
+
+    private let store: BrowserStore
+    private var closedTabsStack: [ClosedTabState] = []
+
+    var onTabRemoved: ((UUID) -> Void)?
+    var onTabLoaded: ((UUID, String) -> Void)?
+
+    init(store: BrowserStore) {
+        self.store = store
+    }
+
+    @discardableResult
+    func newTab(
+        urlString: String = "https://example.com",
+        shouldSelect: Bool = true,
+        shouldLoad: Bool = true,
+        focusAddressBar: Bool = false,
+        isPrivate: Bool = false,
+        profileID: UUID? = nil
+    ) -> UUID {
+        let targetProfileID = profileID ?? store.currentProfileID
+        let tab = Tab(profileID: targetProfileID, urlString: urlString, isPrivate: isPrivate)
+        store.tabs.append(tab)
+        store.normalizePinnedOrdering()
+        if shouldSelect {
+            store.setSelectedTabID(tab.id)
+        }
+        if shouldLoad {
+            onTabLoaded?(tab.id, urlString)
+        }
+        if focusAddressBar {
+            store.requestAddressBarFocus()
+        }
+        return tab.id
+    }
+
+    @discardableResult
+    func newBlankTab(shouldSelect: Bool = true, isPrivate: Bool = false) -> UUID {
+        newTab(urlString: "about:blank", shouldSelect: shouldSelect, shouldLoad: true, isPrivate: isPrivate, profileID: store.currentProfileID)
+    }
+
+    @discardableResult
+    func newPrivateTab(urlString: String = "https://example.com", focusAddressBar: Bool = false) -> UUID {
+        newTab(urlString: urlString, focusAddressBar: focusAddressBar, isPrivate: true, profileID: store.currentProfileID)
+    }
+
+    func closeTab(id: UUID) {
+        guard let closedIndex = store.tabs.firstIndex(where: { $0.id == id }) else { return }
+        let wasSelected = (store.selectedTabID == id)
+        let closedTab = store.tabs[closedIndex]
+        pushClosedTabState(for: closedTab)
+
+        store.tabs.removeAll { $0.id == id }
+        onTabRemoved?(id)
+
+        if store.tabs.isEmpty {
+            _ = newBlankTab(shouldSelect: true, isPrivate: false)
+            return
+        }
+
+        if wasSelected {
+            let nextIndex = min(closedIndex, store.tabs.count - 1)
+            store.setSelectedTabID(store.tabs[nextIndex].id)
+            return
+        }
+
+        if let selectedTabID = store.selectedTabID, store.tabs.contains(where: { $0.id == selectedTabID }) {
+            return
+        }
+        store.setSelectedTabID(store.tabs.first?.id)
+    }
+
+    func duplicateTab(id: UUID) {
+        guard let sourceIndex = store.tabs.firstIndex(where: { $0.id == id }) else { return }
+        let sourceTab = store.tabs[sourceIndex]
+        let duplicate = Tab(
+            profileID: sourceTab.profileID,
+            urlString: sourceTab.urlString,
+            title: sourceTab.title,
+            isPrivate: sourceTab.isPrivate,
+            isPinned: sourceTab.isPinned,
+            zoomFactor: sourceTab.zoomFactor,
+            isReaderModeEnabled: sourceTab.isReaderModeEnabled,
+            faviconData: sourceTab.faviconData
+        )
+        store.tabs.insert(duplicate, at: min(sourceIndex + 1, store.tabs.count))
+        store.normalizePinnedOrdering()
+        store.setSelectedTabID(duplicate.id)
+        onTabLoaded?(duplicate.id, sourceTab.urlString)
+    }
+
+    func closeOtherTabs(keeping id: UUID) {
+        guard store.tabs.contains(where: { $0.id == id }) else { return }
+        let removedTabs = store.tabs.filter { $0.id != id }
+        for tab in removedTabs {
+            pushClosedTabState(for: tab)
+            onTabRemoved?(tab.id)
+        }
+        store.tabs.removeAll { $0.id != id }
+        store.setSelectedTabID(id)
+    }
+
+    func closeTabsToRight(of id: UUID) {
+        guard let tabIndex = store.tabs.firstIndex(where: { $0.id == id }) else { return }
+        guard tabIndex < store.tabs.count - 1 else { return }
+        let removedTabs = Array(store.tabs[(tabIndex + 1)...])
+        let removedIDs = Set(removedTabs.map(\.id))
+        for tab in removedTabs {
+            pushClosedTabState(for: tab)
+            onTabRemoved?(tab.id)
+        }
+        store.tabs.removeAll { removedIDs.contains($0.id) }
+        if let selectedTabID = store.selectedTabID, !store.tabs.contains(where: { $0.id == selectedTabID }) {
+            store.setSelectedTabID(id)
+        }
+    }
+
+    func closeTabs(inProfileID profileID: UUID) {
+        let removedTabs = store.tabs.filter { $0.profileID == profileID }
+        for tab in removedTabs {
+            onTabRemoved?(tab.id)
+        }
+        let removedIDs = Set(removedTabs.map(\.id))
+        store.tabs.removeAll { removedIDs.contains($0.id) }
+        closedTabsStack.removeAll { $0.profileID == profileID }
+    }
+
+    func setTabPinned(id: UUID, isPinned: Bool) {
+        guard let index = store.tabs.firstIndex(where: { $0.id == id }) else { return }
+        store.tabs[index].isPinned = isPinned
+        store.normalizePinnedOrdering()
+    }
+
+    func reorderTab(draggedID: UUID, before targetID: UUID) {
+        guard draggedID != targetID else { return }
+        guard let sourceIndex = store.tabs.firstIndex(where: { $0.id == draggedID }) else { return }
+        guard let destinationIndex = store.tabs.firstIndex(where: { $0.id == targetID }) else { return }
+        let movedTab = store.tabs.remove(at: sourceIndex)
+        let adjustedDestination = sourceIndex < destinationIndex ? destinationIndex - 1 : destinationIndex
+        store.tabs.insert(movedTab, at: adjustedDestination)
+        store.normalizePinnedOrdering()
+    }
+
+    func selectTab(atOneBasedIndex index: Int) {
+        guard index >= 1, index <= store.tabs.count else { return }
+        store.setSelectedTabID(store.tabs[index - 1].id)
+    }
+
+    func cycleTab(forward: Bool) {
+        guard let selectedTabID = store.selectedTabID else { return }
+        guard let currentIndex = store.tabs.firstIndex(where: { $0.id == selectedTabID }) else { return }
+        guard !store.tabs.isEmpty else { return }
+        let nextIndex = forward
+            ? (currentIndex + 1) % store.tabs.count
+            : (currentIndex - 1 + store.tabs.count) % store.tabs.count
+        store.setSelectedTabID(store.tabs[nextIndex].id)
+    }
+
+    func selectTab(id: UUID) {
+        guard store.tabs.contains(where: { $0.id == id }) else { return }
+        store.setSelectedTabID(id)
+    }
+
+    func closeCurrentTab() {
+        guard let selectedTabID = store.selectedTabID else { return }
+        closeTab(id: selectedTabID)
+    }
+
+    func reopenClosedTab() {
+        guard let closed = closedTabsStack.popLast() else { return }
+        let reopenedID = newTab(
+            urlString: closed.urlString,
+            shouldSelect: true,
+            shouldLoad: true,
+            isPrivate: closed.isPrivate,
+            profileID: closed.profileID
+        )
+        if let index = store.tabs.firstIndex(where: { $0.id == reopenedID }) {
+            store.tabs[index].title = closed.title
+            store.tabs[index].isPinned = closed.isPinned
+            store.tabs[index].lastSelectedAt = Date()
+        }
+        store.normalizePinnedOrdering()
+    }
+
+    private func pushClosedTabState(for tab: Tab) {
+        let title = tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayTitle = title.isEmpty ? "New Tab" : title
+        closedTabsStack.append(
+            ClosedTabState(
+                profileID: tab.profileID,
+                urlString: tab.urlString,
+                title: displayTitle,
+                isPrivate: tab.isPrivate,
+                isPinned: tab.isPinned
+            )
+        )
+    }
+}

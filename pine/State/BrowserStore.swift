@@ -1,0 +1,62 @@
+import Combine
+import Foundation
+
+final class BrowserStore: ObservableObject {
+    @Published var tabs: [Tab] = []
+    @Published var selectedTabID: UUID?
+
+    @Published var profiles: [Profile] = []
+    @Published var currentProfileID: UUID = UUID()
+
+    @Published var sessionSettings: BrowserSettings = .default
+    @Published var permissionDefaults: PermissionDefaults = .default
+    @Published var trackerBlockingMode: TrackerBlockingMode = .off
+
+    @Published var addressBarFocusToken = UUID()
+    @Published private(set) var shouldSelectAllInAddressBar = false
+
+    @Published var isHistoryPresented = false
+    @Published var isBookmarksPresented = false
+    @Published var isDownloadsPresented = false
+    @Published var isSettingsPresented = false
+    @Published var isProfileManagementPresented = false
+    @Published var isTabSearchPresented = false
+    @Published var tabSearchQuery = ""
+
+    @Published var isDownloadsShelfDismissed = false
+    @Published var profilePendingDeletion: Profile?
+
+    var selectedTab: Tab? {
+        guard let selectedTabID else { return nil }
+        return tabs.first(where: { $0.id == selectedTabID })
+    }
+
+    var sortedTabs: [Tab] {
+        tabs
+    }
+
+    var currentProfile: Profile? {
+        profiles.first(where: { $0.id == currentProfileID })
+    }
+
+    func requestAddressBarFocus(selectAll: Bool = false) {
+        shouldSelectAllInAddressBar = selectAll
+        addressBarFocusToken = UUID()
+    }
+
+    func consumeAddressBarSelectAllRequest() {
+        shouldSelectAllInAddressBar = false
+    }
+
+    func setSelectedTabID(_ id: UUID?) {
+        selectedTabID = id
+        guard let id, let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        tabs[index].lastSelectedAt = Date()
+    }
+
+    func normalizePinnedOrdering() {
+        let pinnedTabs = tabs.filter(\.isPinned)
+        let unpinnedTabs = tabs.filter { !$0.isPinned }
+        tabs = pinnedTabs + unpinnedTabs
+    }
+}
