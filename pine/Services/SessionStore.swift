@@ -2,6 +2,7 @@ import Foundation
 
 struct PersistedTab: Codable {
     let id: UUID
+    let profileID: UUID?
     let urlString: String
     let title: String?
     let isPinned: Bool
@@ -18,11 +19,32 @@ struct BrowserSessionSnapshot: Codable {
 struct BrowserSettings: Codable {
     var restorePreviousSession: Bool
     var includePrivateTabsInSession: Bool
+    var currentProfileID: UUID?
 
     static let `default` = BrowserSettings(
         restorePreviousSession: true,
-        includePrivateTabsInSession: false
+        includePrivateTabsInSession: false,
+        currentProfileID: nil
     )
+
+    private enum CodingKeys: String, CodingKey {
+        case restorePreviousSession
+        case includePrivateTabsInSession
+        case currentProfileID
+    }
+
+    init(restorePreviousSession: Bool, includePrivateTabsInSession: Bool, currentProfileID: UUID?) {
+        self.restorePreviousSession = restorePreviousSession
+        self.includePrivateTabsInSession = includePrivateTabsInSession
+        self.currentProfileID = currentProfileID
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        restorePreviousSession = try container.decodeIfPresent(Bool.self, forKey: .restorePreviousSession) ?? true
+        includePrivateTabsInSession = try container.decodeIfPresent(Bool.self, forKey: .includePrivateTabsInSession) ?? false
+        currentProfileID = try container.decodeIfPresent(UUID.self, forKey: .currentProfileID)
+    }
 }
 
 final class SessionStore {

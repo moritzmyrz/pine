@@ -2,6 +2,7 @@ import Foundation
 
 struct Tab: Identifiable {
     let id: UUID
+    var profileID: UUID
     var urlString: String
     var title: String
     var isPrivate: Bool
@@ -17,6 +18,7 @@ struct Tab: Identifiable {
 
     init(
         id: UUID = UUID(),
+        profileID: UUID,
         urlString: String,
         title: String = "New Tab",
         isPrivate: Bool = false,
@@ -31,6 +33,7 @@ struct Tab: Identifiable {
         canGoForward: Bool = false
     ) {
         self.id = id
+        self.profileID = profileID
         self.urlString = urlString
         self.title = title
         self.isPrivate = isPrivate

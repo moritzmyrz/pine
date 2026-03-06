@@ -7,6 +7,9 @@ struct BrowserRootView: View {
     @State private var isHistoryPresented = false
     @State private var isBookmarksPresented = false
     @State private var isDownloadsPresented = false
+    @State private var isSettingsPresented = false
+    @State private var isProfileManagementPresented = false
+    @State private var profilePendingDeletion: Profile?
     @State private var isTabSearchPresented = false
     @State private var tabSearchQuery = ""
     @State private var draggedTabID: UUID?
@@ -39,6 +42,26 @@ struct BrowserRootView: View {
             }
             .sheet(isPresented: $isDownloadsPresented) {
                 DownloadsSheetView(downloadManager: viewModel.downloadManager)
+            }
+            .sheet(isPresented: $isSettingsPresented) {
+                SettingsSheetView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $isProfileManagementPresented) {
+                ProfileManagementSheet(
+                    viewModel: viewModel,
+                    profilePendingDeletion: $profilePendingDeletion
+                )
+            }
+            .alert("Delete Profile?", isPresented: profileDeleteConfirmationBinding, presenting: profilePendingDeletion) { profile in
+                Button("Delete", role: .destructive) {
+                    viewModel.deleteProfile(id: profile.id)
+                    profilePendingDeletion = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    profilePendingDeletion = nil
+                }
+            } message: { profile in
+                Text("This removes the profile and its stored website data. Tabs in \(profile.name) will be closed.")
             }
             .onReceive(NotificationCenter.default.publisher(for: .pineShowHistory)) { _ in
                 isHistoryPresented = true
@@ -82,6 +105,8 @@ struct BrowserRootView: View {
             }
             .toolbar {
                 ToolbarItemGroup {
+                    profileToolbarMenu
+
                     Button("New Tab") {
                         viewModel.newTab(focusAddressBar: true)
                     }
@@ -108,6 +133,10 @@ struct BrowserRootView: View {
 
                     Button("Downloads") {
                         isDownloadsPresented = true
+                    }
+
+                    Button("Settings") {
+                        isSettingsPresented = true
                     }
 
                     readingToolbarMenu
@@ -142,9 +171,13 @@ struct BrowserRootView: View {
     }
 
     private var blankTabState: some View {
-        VStack(spacing: 8) {
+        let profileLabel = viewModel.selectedTab.map { viewModel.profileName(for: $0.profileID) } ?? "Unknown"
+        return VStack(spacing: 8) {
             Text("New Tab")
                 .font(.title2)
+            Text("Profile: \(profileLabel)")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             Text("Type a URL or search term in the address bar to start browsing.")
                 .foregroundStyle(.secondary)
             Text("Tip: Press Cmd+L to focus the address bar.")
@@ -192,6 +225,15 @@ struct BrowserRootView: View {
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(Color.purple.opacity(0.2))
+                                    .clipShape(Capsule())
+                            }
+
+                            if viewModel.profiles.count > 1 {
+                                Text(viewModel.profileName(for: tab.profileID))
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.blue.opacity(0.16))
                                     .clipShape(Capsule())
                             }
 
@@ -350,6 +392,36 @@ struct BrowserRootView: View {
     private func faviconImage(for tab: Tab) -> NSImage? {
         guard let faviconData = tab.faviconData else { return nil }
         return NSImage(data: faviconData)
+    }
+
+    private var profileDeleteConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { profilePendingDeletion != nil },
+            set: { shouldPresent in
+                if !shouldPresent {
+                    profilePendingDeletion = nil
+                }
+            }
+        )
+    }
+
+    private var profileToolbarMenu: some View {
+        Menu {
+            Picker("Current Profile", selection: Binding(
+                get: { viewModel.currentProfileID },
+                set: { viewModel.selectProfile(id: $0) }
+            )) {
+                ForEach(viewModel.profiles) { profile in
+                    Text(profile.name).tag(profile.id)
+                }
+            }
+            Divider()
+            Button("Manage Profiles...") {
+                isProfileManagementPresented = true
+            }
+        } label: {
+            Text("Profile: \(viewModel.currentProfile?.name ?? "Unknown")")
+        }
     }
 
     private var readerModeButtonTitle: String {
@@ -560,6 +632,106 @@ private struct DownloadsSheetView: View {
                 .padding(.vertical, 2)
             }
             .navigationTitle("Downloads")
+        }
+        .frame(minWidth: 560, minHeight: 360)
+    }
+}
+
+private struct ProfileManagementSheet: View {
+    @ObservedObject var viewModel: BrowserViewModel
+    @Binding var profilePendingDeletion: Profile?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                List {
+                    ForEach(viewModel.profiles) { profile in
+                        HStack(spacing: 10) {
+                            TextField(
+                                "Profile Name",
+                                text: Binding(
+                                    get: { viewModel.profileName(for: profile.id) },
+                                    set: { viewModel.renameProfile(id: profile.id, to: $0) }
+                                )
+                            )
+                            .textFieldStyle(.roundedBorder)
+
+                            if profile.isDefault {
+                                Text("Default")
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.gray.opacity(0.18))
+                                    .clipShape(Capsule())
+                            }
+
+                            Spacer()
+
+                            Button(role: .destructive) {
+                                profilePendingDeletion = profile
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .disabled(!viewModel.canDeleteProfile(id: profile.id))
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+
+                HStack {
+                    Button("New Profile") {
+                        let newProfileID = viewModel.createProfile(named: nil)
+                        viewModel.selectProfile(id: newProfileID)
+                    }
+                    Spacer()
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+            .padding()
+            .navigationTitle("Profiles")
+        }
+        .frame(minWidth: 500, minHeight: 340)
+    }
+}
+
+private struct SettingsSheetView: View {
+    @ObservedObject var viewModel: BrowserViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Session") {
+                    Toggle("Restore previous session", isOn: Binding(
+                        get: { viewModel.sessionSettings.restorePreviousSession },
+                        set: { viewModel.setRestorePreviousSessionEnabled($0) }
+                    ))
+                    Toggle("Include private tabs in session", isOn: Binding(
+                        get: { viewModel.sessionSettings.includePrivateTabsInSession },
+                        set: { viewModel.setIncludePrivateTabsInSession($0) }
+                    ))
+                }
+
+                Section("Autofill troubleshooting") {
+                    Text("Pine uses WebKit and macOS Password AutoFill. If AutoFill or passkeys are not appearing, check System Settings > Passwords and verify AutoFill is enabled for passwords and passkeys.")
+                        .font(.subheadline)
+                    Text("Some sites only show AutoFill after selecting a username/password field directly.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("Settings")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
         }
         .frame(minWidth: 560, minHeight: 360)
     }

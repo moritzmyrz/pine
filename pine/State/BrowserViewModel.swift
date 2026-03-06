@@ -6,6 +6,8 @@ import WebKit
 final class BrowserViewModel: ObservableObject {
     @Published var tabs: [Tab]
     @Published var selectedTabID: UUID?
+    @Published var profiles: [Profile]
+    @Published var currentProfileID: UUID
     @Published var sessionSettings: BrowserSettings
     @Published var addressBarFocusToken = UUID()
     @Published private(set) var shouldSelectAllInAddressBar = false
@@ -13,6 +15,7 @@ final class BrowserViewModel: ObservableObject {
     let bookmarksStore: BookmarksStore
     let downloadManager: DownloadManager
     let sessionStore: SessionStore
+    let profileStore: ProfileStore
 
     // Keep WKWebView instances in the view model so Tab stays plain state data.
     // This works well with SwiftUI value-driven updates on macOS.
@@ -24,6 +27,7 @@ final class BrowserViewModel: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
 
     private struct ClosedTabState {
+        let profileID: UUID
         let urlString: String
         let title: String
         let isPrivate: Bool
@@ -57,26 +61,45 @@ final class BrowserViewModel: ObservableObject {
         tabs
     }
 
+    var currentProfile: Profile? {
+        profiles.first(where: { $0.id == currentProfileID })
+    }
+
     init(
         historyStore: HistoryStore = HistoryStore(),
         bookmarksStore: BookmarksStore = BookmarksStore(),
         downloadManager: DownloadManager = DownloadManager(),
-        sessionStore: SessionStore = SessionStore()
+        sessionStore: SessionStore = SessionStore(),
+        profileStore: ProfileStore = ProfileStore()
     ) {
         self.historyStore = historyStore
         self.bookmarksStore = bookmarksStore
         self.downloadManager = downloadManager
         self.sessionStore = sessionStore
+        self.profileStore = profileStore
         tabs = []
         selectedTabID = nil
-        sessionSettings = sessionStore.loadSettings()
+        let initialSettings = sessionStore.loadSettings()
+        sessionSettings = initialSettings
+        let loadedProfiles = profileStore.loadProfiles()
+        profiles = loadedProfiles
+        let defaultProfileID = loadedProfiles.first(where: \.isDefault)?.id ?? loadedProfiles[0].id
+        let savedProfileID = initialSettings.currentProfileID
+        let resolvedCurrentProfileID = savedProfileID.flatMap { candidate in
+            loadedProfiles.contains(where: { $0.id == candidate }) ? candidate : nil
+        } ?? defaultProfileID
+        currentProfileID = resolvedCurrentProfileID
 
         if sessionSettings.restorePreviousSession,
            let savedSession = sessionStore.loadSession(),
            !savedSession.tabs.isEmpty {
             tabs = savedSession.tabs.map { persisted in
-                Tab(
+                let restoredProfileID = persisted.profileID.flatMap { id in
+                    loadedProfiles.contains(where: { $0.id == id }) ? id : nil
+                } ?? resolvedCurrentProfileID
+                return Tab(
                     id: persisted.id,
+                    profileID: restoredProfileID,
                     urlString: persisted.urlString,
                     title: persisted.title ?? "New Tab",
                     isPrivate: persisted.isPrivate,
@@ -94,11 +117,14 @@ final class BrowserViewModel: ObservableObject {
                 load(urlInput: tab.urlString, in: tab.id)
             }
         } else {
-            let firstTab = Tab(urlString: "https://example.com", lastSelectedAt: Date())
+            let firstTab = Tab(profileID: resolvedCurrentProfileID, urlString: "https://example.com", lastSelectedAt: Date())
             tabs = [firstTab]
             setSelectedTabID(firstTab.id)
             load(urlInput: firstTab.urlString, in: firstTab.id)
         }
+
+        sessionSettings.currentProfileID = resolvedCurrentProfileID
+        sessionStore.saveSettings(sessionSettings)
 
         bookmarksStore.objectWillChange
             .sink { [weak self] _ in
@@ -220,9 +246,11 @@ final class BrowserViewModel: ObservableObject {
         shouldSelect: Bool = true,
         shouldLoad: Bool = true,
         focusAddressBar: Bool = false,
-        isPrivate: Bool = false
+        isPrivate: Bool = false,
+        profileID: UUID? = nil
     ) -> UUID {
-        let tab = Tab(urlString: urlString, isPrivate: isPrivate)
+        let targetProfileID = profileID ?? currentProfileID
+        let tab = Tab(profileID: targetProfileID, urlString: urlString, isPrivate: isPrivate)
         tabs.append(tab)
         normalizePinnedOrdering()
         if shouldSelect {
@@ -242,12 +270,12 @@ final class BrowserViewModel: ObservableObject {
 
     @discardableResult
     func newBlankTab(shouldSelect: Bool = true, isPrivate: Bool = false) -> UUID {
-        newTab(urlString: "about:blank", shouldSelect: shouldSelect, shouldLoad: true, isPrivate: isPrivate)
+        newTab(urlString: "about:blank", shouldSelect: shouldSelect, shouldLoad: true, isPrivate: isPrivate, profileID: currentProfileID)
     }
 
     @discardableResult
     func newPrivateTab(urlString: String = "https://example.com", focusAddressBar: Bool = false) -> UUID {
-        newTab(urlString: urlString, focusAddressBar: focusAddressBar, isPrivate: true)
+        newTab(urlString: urlString, focusAddressBar: focusAddressBar, isPrivate: true, profileID: currentProfileID)
     }
 
     func closeTab(id: UUID) {
@@ -287,6 +315,7 @@ final class BrowserViewModel: ObservableObject {
         guard let sourceIndex = tabs.firstIndex(where: { $0.id == id }) else { return }
         let sourceTab = tabs[sourceIndex]
         let duplicate = Tab(
+            profileID: sourceTab.profileID,
             urlString: sourceTab.urlString,
             title: sourceTab.title,
             isPrivate: sourceTab.isPrivate,
@@ -393,6 +422,10 @@ final class BrowserViewModel: ObservableObject {
         }
     }
 
+    func profileName(for profileID: UUID) -> String {
+        profiles.first(where: { $0.id == profileID })?.name ?? "Unknown"
+    }
+
     func closeCurrentTab() {
         guard let selectedTabID else { return }
         closeTab(id: selectedTabID)
@@ -404,7 +437,8 @@ final class BrowserViewModel: ObservableObject {
             urlString: closed.urlString,
             shouldSelect: true,
             shouldLoad: true,
-            isPrivate: closed.isPrivate
+            isPrivate: closed.isPrivate,
+            profileID: closed.profileID
         )
 
         if let index = tabs.firstIndex(where: { $0.id == reopenedID }) {
@@ -431,6 +465,94 @@ final class BrowserViewModel: ObservableObject {
         persistSession()
     }
 
+    func selectProfile(id: UUID) {
+        guard profiles.contains(where: { $0.id == id }) else { return }
+        currentProfileID = id
+        sessionSettings.currentProfileID = id
+        sessionStore.saveSettings(sessionSettings)
+
+        if let currentSelectedID = selectedTabID,
+           tabs.first(where: { $0.id == currentSelectedID })?.profileID == id {
+            return
+        }
+
+        if let existing = tabs.last(where: { $0.profileID == id }) {
+            setSelectedTabID(existing.id)
+        } else {
+            _ = newBlankTab(shouldSelect: true, isPrivate: false)
+        }
+    }
+
+    @discardableResult
+    func createProfile(named name: String?) -> UUID {
+        let trimmed = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackName = "Profile \(profiles.count + 1)"
+        let profile = Profile(name: trimmed.isEmpty ? fallbackName : trimmed, isDefault: false)
+        profiles.append(profile)
+        profileStore.saveProfiles(profiles)
+        return profile.id
+    }
+
+    func renameProfile(id: UUID, to newName: String) {
+        guard let index = profiles.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        profiles[index].name = trimmed
+        profileStore.saveProfiles(profiles)
+    }
+
+    func canDeleteProfile(id: UUID) -> Bool {
+        guard let profile = profiles.first(where: { $0.id == id }) else { return false }
+        if profile.isDefault {
+            return false
+        }
+        return profiles.count > 1
+    }
+
+    func deleteProfile(id: UUID) {
+        guard canDeleteProfile(id: id) else { return }
+
+        let tabsInProfile = tabs.filter { $0.profileID == id }
+        for tab in tabsInProfile {
+            webViews[tab.id] = nil
+            webViewObservers[tab.id]?.invalidate()
+            webViewObservers[tab.id] = nil
+            faviconTasks[tab.id]?.cancel()
+            faviconTasks[tab.id] = nil
+        }
+        tabs.removeAll { $0.profileID == id }
+
+        profiles.removeAll { $0.id == id }
+        profileStore.saveProfiles(profiles)
+        profileStore.deleteStoredWebsiteData(for: id) {}
+
+        if currentProfileID == id {
+            let fallbackProfileID = profiles.first(where: \.isDefault)?.id ?? profiles.first?.id
+            if let fallbackProfileID {
+                currentProfileID = fallbackProfileID
+                sessionSettings.currentProfileID = fallbackProfileID
+                sessionStore.saveSettings(sessionSettings)
+            }
+        }
+
+        if let selectedTabID, tabs.contains(where: { $0.id == selectedTabID }) {
+            if let selectedTab = tabs.first(where: { $0.id == selectedTabID }),
+               selectedTab.profileID != currentProfileID,
+               let replacement = tabs.last(where: { $0.profileID == currentProfileID }) {
+                setSelectedTabID(replacement.id)
+            }
+        } else {
+            if let replacement = tabs.last(where: { $0.profileID == currentProfileID }) {
+                setSelectedTabID(replacement.id)
+            } else {
+                _ = newBlankTab(shouldSelect: true, isPrivate: false)
+            }
+        }
+
+        closedTabsStack.removeAll { $0.profileID == id }
+        persistSession()
+    }
+
     func selectTab(id: UUID) {
         guard tabs.contains(where: { $0.id == id }) else { return }
         setSelectedTabID(id)
@@ -440,10 +562,18 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func openInNewTab(request: URLRequest?, fromTabID: UUID?) {
-        let shouldUsePrivate = fromTabID.flatMap { sourceID in
-            tabs.first(where: { $0.id == sourceID })?.isPrivate
-        } ?? false
-        let tabID = newBlankTab(shouldSelect: true, isPrivate: shouldUsePrivate)
+        let sourceTab = fromTabID.flatMap { sourceID in
+            tabs.first(where: { $0.id == sourceID })
+        }
+        let shouldUsePrivate = sourceTab?.isPrivate ?? false
+        let sourceProfileID = sourceTab?.profileID ?? currentProfileID
+        let tabID = newTab(
+            urlString: "about:blank",
+            shouldSelect: true,
+            shouldLoad: true,
+            isPrivate: shouldUsePrivate,
+            profileID: sourceProfileID
+        )
         guard let request else { return }
 
         let webView = webView(for: tabID)
@@ -470,8 +600,11 @@ final class BrowserViewModel: ObservableObject {
         }
 
         let configuration = WKWebViewConfiguration()
-        if tabs.first(where: { $0.id == tabID })?.isPrivate == true {
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        if let tab = tabs.first(where: { $0.id == tabID }), tab.isPrivate {
             configuration.websiteDataStore = .nonPersistent()
+        } else if let tab = tabs.first(where: { $0.id == tabID }) {
+            configuration.websiteDataStore = profileStore.websiteDataStore(for: tab.profileID)
         }
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -867,6 +1000,7 @@ final class BrowserViewModel: ObservableObject {
 
             return PersistedTab(
                 id: tab.id,
+                profileID: tab.profileID,
                 urlString: persistedURL,
                 title: persistedTitle,
                 isPinned: tab.isPinned,
@@ -888,6 +1022,7 @@ final class BrowserViewModel: ObservableObject {
         let displayTitle = title.isEmpty ? "New Tab" : title
         closedTabsStack.append(
             ClosedTabState(
+                profileID: tab.profileID,
                 urlString: tab.urlString,
                 title: displayTitle,
                 isPrivate: tab.isPrivate,
@@ -909,6 +1044,14 @@ final class BrowserViewModel: ObservableObject {
             (() => {
               try {
                 const id = 'pine-reader-mode-lite';
+                const hasPasswordField = !!document.querySelector('input[type="password"]');
+                if (hasPasswordField) {
+                  const existing = document.getElementById(id);
+                  if (existing) {
+                    existing.remove();
+                  }
+                  return;
+                }
                 let style = document.getElementById(id);
                 if (!style) {
                   style = document.createElement('style');
