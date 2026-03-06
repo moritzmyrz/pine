@@ -1,11 +1,24 @@
 import Combine
 import Foundation
 
+struct BookmarkFolder: Identifiable, Codable, Hashable {
+    let id: UUID
+    let name: String
+    let parentID: UUID?
+
+    init(id: UUID = UUID(), name: String, parentID: UUID? = nil) {
+        self.id = id
+        self.name = name
+        self.parentID = parentID
+    }
+}
+
 struct Bookmark: Identifiable, Codable {
     let id: UUID
     let title: String
     let urlString: String
     let createdAt: Date
+    let folderID: UUID?
     let folderName: String?
 
     private enum CodingKeys: String, CodingKey {
@@ -13,6 +26,7 @@ struct Bookmark: Identifiable, Codable {
         case title
         case urlString
         case createdAt
+        case folderID
         case folderName
     }
 
@@ -21,12 +35,14 @@ struct Bookmark: Identifiable, Codable {
         title: String,
         urlString: String,
         createdAt: Date = Date(),
+        folderID: UUID? = nil,
         folderName: String? = nil
     ) {
         self.id = id
         self.title = title
         self.urlString = urlString
         self.createdAt = createdAt
+        self.folderID = folderID
         self.folderName = folderName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
 
@@ -36,6 +52,7 @@ struct Bookmark: Identifiable, Codable {
         title = try container.decode(String.self, forKey: .title)
         urlString = try container.decode(String.self, forKey: .urlString)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
+        folderID = try container.decodeIfPresent(UUID.self, forKey: .folderID)
         folderName = try container.decodeIfPresent(String.self, forKey: .folderName)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty
@@ -44,7 +61,7 @@ struct Bookmark: Identifiable, Codable {
 
 final class BookmarksStore: ObservableObject {
     @Published private(set) var bookmarks: [Bookmark] = []
-    @Published private(set) var folders: [String] = []
+    @Published private(set) var folders: [BookmarkFolder] = []
 
     private let userDefaults: UserDefaults
     private let storageKey: String
@@ -69,24 +86,22 @@ final class BookmarksStore: ObservableObject {
     }
 
     func addBookmark(title: String, urlString: String) {
-        addBookmark(title: title, urlString: urlString, folderName: nil)
+        addBookmark(title: title, urlString: urlString, folderID: nil)
     }
 
-    func addBookmark(title: String, urlString: String, folderName: String?) {
+    func addBookmark(title: String, urlString: String, folderID: UUID?) {
         guard let normalized = normalizedURLString(from: urlString) else { return }
         guard bookmark(forURLString: normalized) == nil else { return }
 
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayTitle = trimmedTitle.isEmpty ? normalized : trimmedTitle
-
-        let bookmark = Bookmark(title: displayTitle, urlString: normalized, folderName: folderName)
+        let bookmark = Bookmark(title: displayTitle, urlString: normalized, folderID: folderID)
         bookmarks.insert(bookmark, at: 0)
         save()
     }
 
     func removeBookmark(urlString: String) {
         guard let normalized = normalizedURLString(from: urlString) else { return }
-
         bookmarks.removeAll { normalizedURLString(from: $0.urlString) == normalized }
         save()
     }
@@ -96,35 +111,127 @@ final class BookmarksStore: ObservableObject {
         save()
     }
 
-    func setFolderName(_ folderName: String?, for bookmarkID: UUID) {
-        guard let index = bookmarks.firstIndex(where: { $0.id == bookmarkID }) else { return }
-        if let folderName {
-            addFolder(named: folderName)
+    func renameBookmark(id: UUID, to title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let index = bookmarks.firstIndex(where: { $0.id == id }) else { return }
+        let existing = bookmarks[index]
+        bookmarks[index] = Bookmark(
+            id: existing.id,
+            title: trimmed,
+            urlString: existing.urlString,
+            createdAt: existing.createdAt,
+            folderID: existing.folderID
+        )
+        save()
+    }
+
+    func moveBookmark(id: UUID, toFolderID folderID: UUID?) {
+        guard let index = bookmarks.firstIndex(where: { $0.id == id }) else { return }
+        if let folderID, !folders.contains(where: { $0.id == folderID }) {
+            return
         }
+
         let existing = bookmarks[index]
         bookmarks[index] = Bookmark(
             id: existing.id,
             title: existing.title,
             urlString: existing.urlString,
             createdAt: existing.createdAt,
-            folderName: folderName
+            folderID: folderID
         )
         save()
     }
 
-    func addFolder(named folderName: String) {
+    @discardableResult
+    func addFolder(named folderName: String, parentID: UUID? = nil) -> UUID? {
         let trimmed = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let existing = folders.first(where: {
+            $0.parentID == parentID && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame
+        }) {
+            return existing.id
+        }
+
+        let folder = BookmarkFolder(name: trimmed, parentID: parentID)
+        folders.append(folder)
+        sortFolders()
+        saveFolders()
+        return folder.id
+    }
+
+    func renameFolder(id: UUID, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        guard !folders.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else { return }
-        folders.append(trimmed)
-        folders.sort { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        guard let index = folders.firstIndex(where: { $0.id == id }) else { return }
+
+        let parentID = folders[index].parentID
+        let hasConflict = folders.contains {
+            $0.id != id && $0.parentID == parentID && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame
+        }
+        guard !hasConflict else { return }
+
+        folders[index] = BookmarkFolder(id: id, name: trimmed, parentID: parentID)
+        sortFolders()
         saveFolders()
     }
 
+    func deleteFolder(id: UUID) {
+        let removedIDs = Set([id] + folderDescendantIDs(of: id))
+        folders.removeAll { removedIDs.contains($0.id) }
+        bookmarks.removeAll { bookmark in
+            guard let folderID = bookmark.folderID else { return false }
+            return removedIDs.contains(folderID)
+        }
+        save()
+    }
+
+    func moveFolder(id: UUID, toParentID parentID: UUID?) {
+        guard id != parentID else { return }
+        guard let index = folders.firstIndex(where: { $0.id == id }) else { return }
+        if let parentID, folderDescendantIDs(of: id).contains(parentID) {
+            return
+        }
+
+        let name = folders[index].name
+        let hasConflict = folders.contains {
+            $0.id != id && $0.parentID == parentID && $0.name.caseInsensitiveCompare(name) == .orderedSame
+        }
+        guard !hasConflict else { return }
+
+        folders[index] = BookmarkFolder(id: id, name: name, parentID: parentID)
+        sortFolders()
+        saveFolders()
+    }
+
+    func rootFolders() -> [BookmarkFolder] {
+        childFolders(of: nil)
+    }
+
+    func childFolders(of parentID: UUID?) -> [BookmarkFolder] {
+        folders.filter { $0.parentID == parentID }
+    }
+
+    func bookmarks(in folderID: UUID?) -> [Bookmark] {
+        bookmarks
+            .filter { $0.folderID == folderID }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    func folderPath(for folderID: UUID?) -> String {
+        guard let folderID else { return "Unsorted" }
+        var names: [String] = []
+        var currentID: UUID? = folderID
+        while let id = currentID, let folder = folders.first(where: { $0.id == id }) {
+            names.insert(folder.name, at: 0)
+            currentID = folder.parentID
+        }
+        return names.isEmpty ? "Unsorted" : names.joined(separator: "/")
+    }
+
     var folderNames: [String] {
-        let bookmarkFolders = Set(bookmarks.compactMap(\.folderName))
-        return Array(bookmarkFolders.union(Set(folders)))
-            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        folders.map(\.name)
     }
 
     func toggleBookmark(title: String, urlString: String) {
@@ -136,18 +243,16 @@ final class BookmarksStore: ObservableObject {
     }
 
     private func load() {
-        if let data = userDefaults.data(forKey: storageKey) {
-            do {
-                bookmarks = try decoder.decode([Bookmark].self, from: data)
-            } catch {
-                bookmarks = []
-            }
+        loadFolders()
+
+        if let data = userDefaults.data(forKey: storageKey),
+           let decoded = try? decoder.decode([Bookmark].self, from: data) {
+            bookmarks = decoded
         } else {
             bookmarks = []
         }
 
-        folders = userDefaults.stringArray(forKey: folderStorageKey) ?? []
-        folders.sort { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        migrateLegacyFolderNamesIfNeeded()
     }
 
     private func save() {
@@ -161,7 +266,82 @@ final class BookmarksStore: ObservableObject {
     }
 
     private func saveFolders() {
-        userDefaults.set(folders, forKey: folderStorageKey)
+        do {
+            let data = try encoder.encode(folders)
+            userDefaults.set(data, forKey: folderStorageKey)
+        } catch {
+            return
+        }
+    }
+
+    private func loadFolders() {
+        if let data = userDefaults.data(forKey: folderStorageKey),
+           let decoded = try? decoder.decode([BookmarkFolder].self, from: data) {
+            folders = decoded
+            sortFolders()
+            return
+        }
+
+        if let oldFolderNames = userDefaults.stringArray(forKey: folderStorageKey) {
+            folders = oldFolderNames.map { BookmarkFolder(name: $0, parentID: nil) }
+            sortFolders()
+            saveFolders()
+            return
+        }
+
+        folders = []
+    }
+
+    private func sortFolders() {
+        folders.sort { lhs, rhs in
+            if lhs.parentID == rhs.parentID {
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+            return (lhs.parentID?.uuidString ?? "") < (rhs.parentID?.uuidString ?? "")
+        }
+    }
+
+    private func folderDescendantIDs(of folderID: UUID) -> [UUID] {
+        let children = folders.filter { $0.parentID == folderID }.map(\.id)
+        return children + children.flatMap { folderDescendantIDs(of: $0) }
+    }
+
+    private func migrateLegacyFolderNamesIfNeeded() {
+        var changed = false
+        var migrated: [Bookmark] = []
+
+        for bookmark in bookmarks {
+            if bookmark.folderID != nil || bookmark.folderName == nil {
+                migrated.append(bookmark)
+                continue
+            }
+
+            let segments = (bookmark.folderName ?? "")
+                .split(separator: "/")
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+
+            var parentID: UUID?
+            for segment in segments {
+                parentID = addFolder(named: segment, parentID: parentID)
+            }
+
+            migrated.append(
+                Bookmark(
+                    id: bookmark.id,
+                    title: bookmark.title,
+                    urlString: bookmark.urlString,
+                    createdAt: bookmark.createdAt,
+                    folderID: parentID
+                )
+            )
+            changed = true
+        }
+
+        if changed {
+            bookmarks = migrated
+            save()
+        }
     }
 
     private func normalizedURLString(from input: String) -> String? {

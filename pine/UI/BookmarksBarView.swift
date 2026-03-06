@@ -3,28 +3,14 @@ import SwiftUI
 struct BookmarksBarView: View {
     @ObservedObject var viewModel: BrowserViewModel
 
-    private var topLevelBookmarks: [Bookmark] {
-        viewModel.bookmarksStore.bookmarks.filter { $0.folderName == nil }
-    }
-
-    private var folderNames: [String] {
-        viewModel.bookmarksStore.folderNames
-    }
-
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                ForEach(folderNames, id: \.self) { folder in
-                    Menu(folder) {
-                        ForEach(bookmarks(in: folder)) { bookmark in
-                            Button(bookmark.title) {
-                                viewModel.loadBookmarkInSelectedTab(bookmark)
-                            }
-                        }
-                    }
+                ForEach(viewModel.bookmarksStore.rootFolders()) { folder in
+                    folderMenu(folder)
                 }
 
-                ForEach(topLevelBookmarks) { bookmark in
+                ForEach(viewModel.bookmarksStore.bookmarks(in: nil)) { bookmark in
                     Button(bookmark.title) {
                         viewModel.loadBookmarkInSelectedTab(bookmark)
                     }
@@ -40,7 +26,18 @@ struct BookmarksBarView: View {
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
-    private func bookmarks(in folder: String) -> [Bookmark] {
-        viewModel.bookmarksStore.bookmarks.filter { $0.folderName == folder }
+    private func folderMenu(_ folder: BookmarkFolder) -> AnyView {
+        AnyView(
+            Menu(folder.name) {
+                ForEach(viewModel.bookmarksStore.childFolders(of: folder.id)) { subfolder in
+                    folderMenu(subfolder)
+                }
+                ForEach(viewModel.bookmarksStore.bookmarks(in: folder.id)) { bookmark in
+                    Button(bookmark.title) {
+                        viewModel.loadBookmarkInSelectedTab(bookmark)
+                    }
+                }
+            }
+        )
     }
 }
