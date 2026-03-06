@@ -8,6 +8,7 @@ struct BrowserRootView: View {
     @State private var addressInput = ""
     @State private var isSiteSettingsPresented = false
     @State private var isTabsOverviewPresented = false
+    @State private var shouldRestoreAddressFocusAfterPalette = false
     @FocusState private var isAddressFieldFocused: Bool
 
     init() {
@@ -136,6 +137,21 @@ struct BrowserRootView: View {
             DispatchQueue.main.async {
                 NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
                 viewModel.consumeAddressBarSelectAllRequest()
+            }
+        }
+        .onChange(of: commandPaletteViewModel.isPresented) {
+            if commandPaletteViewModel.isPresented {
+                shouldRestoreAddressFocusAfterPalette = isAddressFieldFocused
+                isAddressFieldFocused = false
+                return
+            }
+
+            DispatchQueue.main.async {
+                if shouldRestoreAddressFocusAfterPalette {
+                    viewModel.requestAddressBarFocus(selectAll: false)
+                } else {
+                    viewModel.focusActiveWebViewIfPossible()
+                }
             }
         }
     }

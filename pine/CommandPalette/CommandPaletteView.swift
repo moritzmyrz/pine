@@ -18,7 +18,15 @@ struct CommandPaletteView: View {
             }
             .transition(.opacity)
             .onAppear {
-                isQueryFieldFocused = true
+                DispatchQueue.main.async {
+                    isQueryFieldFocused = true
+                }
+            }
+            .onChange(of: viewModel.isPresented) {
+                guard viewModel.isPresented else { return }
+                DispatchQueue.main.async {
+                    isQueryFieldFocused = true
+                }
             }
             .onExitCommand {
                 viewModel.close()
@@ -32,7 +40,7 @@ struct CommandPaletteView: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Search tabs, history, bookmarks, commands", text: $viewModel.query)
+                TextField("Search tabs, history, bookmarks, commands (prefix with > for commands)", text: $viewModel.query)
                     .textFieldStyle(.plain)
                     .focused($isQueryFieldFocused)
                     .onSubmit {
@@ -55,8 +63,9 @@ struct CommandPaletteView: View {
             }
             .frame(maxHeight: 360)
 
+            Divider()
+
             if viewModel.results.isEmpty {
-                Divider()
                 HStack {
                     Text("No results")
                         .foregroundStyle(.secondary)
@@ -66,6 +75,8 @@ struct CommandPaletteView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
             }
+
+            footerHints
         }
         .frame(width: 680)
         .background(.ultraThinMaterial)
@@ -77,6 +88,20 @@ struct CommandPaletteView: View {
         .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
         .padding(.horizontal, 20)
         .padding(.top, 80)
+    }
+
+    private var footerHints: some View {
+        HStack(spacing: 14) {
+            Text("↑↓ navigate")
+            Text("↵ open")
+            Text("esc close")
+            Text("⌥↵ open in new tab")
+            Spacer()
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 
     @ViewBuilder

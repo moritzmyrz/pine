@@ -209,6 +209,10 @@ final class BrowserViewModel: ObservableObject {
         }
     }
 
+    func focusActiveWebViewIfPossible() {
+        focusWebViewForActiveTab()
+    }
+
     func profileName(for profileID: UUID) -> String { profileManager.profileName(for: profileID) }
     func setRestorePreviousSessionEnabled(_ enabled: Bool) { sessionManager.setRestorePreviousSessionEnabled(enabled) }
     func setIncludePrivateTabsInSession(_ enabled: Bool) { sessionManager.setIncludePrivateTabsInSession(enabled) }

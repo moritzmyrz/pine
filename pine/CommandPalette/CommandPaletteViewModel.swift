@@ -7,6 +7,8 @@ final class CommandPaletteViewModel: ObservableObject {
     @Published private(set) var results: [PaletteItem] = []
     @Published var selectedIndex = 0
 
+    private let maxResults = 40
+    private let shortQueryLength = 2
     private let browserViewModel: BrowserViewModel
     private var cancellables: Set<AnyCancellable> = []
 
@@ -100,35 +102,54 @@ final class CommandPaletteViewModel: ObservableObject {
     private func refreshResults() {
         guard isPresented else { return }
 
-        let tabs = searchTabs(query: query)
-        let history = searchHistory(query: query)
-        let bookmarks = searchBookmarks(query: query)
-        let commands = browserViewModel.searchPaletteCommands(query: query)
+        let previousSelectedID = (selectedIndex >= 0 && selectedIndex < results.count)
+            ? results[selectedIndex].id
+            : nil
+        let mode = parseMode(query: query)
 
-        results = tabs + history + bookmarks + commands
-
-        if results.isEmpty {
-            selectedIndex = 0
-        } else {
-            selectedIndex = min(max(selectedIndex, 0), results.count - 1)
+        var merged: [PaletteItem]
+        switch mode {
+        case let .commandsOnly(commandQuery):
+            merged = browserViewModel.searchPaletteCommands(query: commandQuery)
+        case let .all(query):
+            let isShortQuery = query.count <= shortQueryLength && !query.isEmpty
+            let tabs = searchTabs(query: query, isShortQuery: isShortQuery)
+            let history = searchHistory(query: query, isShortQuery: isShortQuery)
+            let bookmarks = searchBookmarks(query: query, isShortQuery: isShortQuery)
+            let commands = browserViewModel.searchPaletteCommands(query: query)
+            merged = tabs + history + bookmarks + commands
         }
+
+        results = merged
+            .sorted(by: sortByScoreThenKindThenTitle)
+            .prefix(maxResults)
+            .map { $0 }
+
+        if let previousSelectedID,
+           let preservedIndex = results.firstIndex(where: { $0.id == previousSelectedID }) {
+            selectedIndex = preservedIndex
+            return
+        }
+        selectedIndex = results.isEmpty ? 0 : min(max(selectedIndex, 0), results.count - 1)
     }
 
-    private func searchTabs(query: String) -> [PaletteItem] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func searchTabs(query: String, isShortQuery: Bool) -> [PaletteItem] {
         return browserViewModel.tabs.compactMap { tab in
+            let subtitle = tabHost(from: tab.urlString) ?? tab.urlString
             let score = bestScore(
-                query: trimmed,
-                candidates: [tab.title, tab.urlString]
+                query: query,
+                candidates: [tab.title, subtitle, tab.urlString]
             )
             guard let score else { return nil }
+
+            let adjustedScore = score + prefixBoost(query: query, candidates: [tab.title, subtitle]) + (isShortQuery ? 35 : 0)
             return PaletteItem(
                 id: "tab:\(tab.id.uuidString)",
                 kind: .tab,
                 title: tab.title,
-                subtitle: tab.urlString,
+                subtitle: subtitle,
                 icon: tab.isPrivate ? "eye.slash" : "globe",
-                score: score,
+                score: adjustedScore,
                 payload: .tab(
                     PaletteTabPayload(
                         tabID: tab.id,
@@ -137,24 +158,23 @@ final class CommandPaletteViewModel: ObservableObject {
                 )
             )
         }
-        .sorted(by: sortByScoreAndTitle)
     }
 
-    private func searchHistory(query: String) -> [PaletteItem] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func searchHistory(query: String, isShortQuery: Bool) -> [PaletteItem] {
         return browserViewModel.historyStore.entries.compactMap { entry in
             let score = bestScore(
-                query: trimmed,
+                query: query,
                 candidates: [entry.title, entry.urlString]
             )
             guard let score else { return nil }
+            let adjustedScore = score + prefixBoost(query: query, candidates: [entry.title, entry.urlString]) + (isShortQuery ? -12 : 0)
             return PaletteItem(
                 id: "history:\(entry.id.uuidString)",
                 kind: .history,
                 title: entry.title,
                 subtitle: entry.urlString,
                 icon: "clock",
-                score: score,
+                score: adjustedScore,
                 payload: .history(
                     PaletteHistoryPayload(
                         entryID: entry.id,
@@ -163,24 +183,23 @@ final class CommandPaletteViewModel: ObservableObject {
                 )
             )
         }
-        .sorted(by: sortByScoreAndTitle)
     }
 
-    private func searchBookmarks(query: String) -> [PaletteItem] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func searchBookmarks(query: String, isShortQuery: Bool) -> [PaletteItem] {
         return browserViewModel.bookmarksStore.bookmarks.compactMap { bookmark in
             let score = bestScore(
-                query: trimmed,
+                query: query,
                 candidates: [bookmark.title, bookmark.urlString]
             )
             guard let score else { return nil }
+            let adjustedScore = score + prefixBoost(query: query, candidates: [bookmark.title, bookmark.urlString]) + (isShortQuery ? -12 : 0)
             return PaletteItem(
                 id: "bookmark:\(bookmark.id.uuidString)",
                 kind: .bookmark,
                 title: bookmark.title,
                 subtitle: bookmark.urlString,
                 icon: "bookmark",
-                score: score,
+                score: adjustedScore,
                 payload: .bookmark(
                     PaletteBookmarkPayload(
                         bookmarkID: bookmark.id,
@@ -189,22 +208,65 @@ final class CommandPaletteViewModel: ObservableObject {
                 )
             )
         }
-        .sorted(by: sortByScoreAndTitle)
     }
 
     private func bestScore(query: String, candidates: [String]) -> Int? {
-        if query.isEmpty {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedQuery.isEmpty {
             return 0
         }
         return candidates
-            .compactMap { FuzzyMatcher.score(query: query, candidate: $0) }
+            .compactMap { FuzzyMatcher.score(query: trimmedQuery, candidate: $0) }
             .max()
     }
 
-    private func sortByScoreAndTitle(lhs: PaletteItem, rhs: PaletteItem) -> Bool {
+    private func prefixBoost(query: String, candidates: [String]) -> Int {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmedQuery.isEmpty else { return 0 }
+        let hasPrefixMatch = candidates.contains {
+            $0.lowercased().hasPrefix(trimmedQuery)
+        }
+        return hasPrefixMatch ? 45 : 0
+    }
+
+    private func parseMode(query: String) -> SearchMode {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix(">") else { return .all(trimmed) }
+
+        let commandQuery = String(trimmed.dropFirst())
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return .commandsOnly(commandQuery)
+    }
+
+    private func tabHost(from urlString: String) -> String? {
+        URL(string: urlString)?.host?.lowercased()
+    }
+
+    private func sortByScoreThenKindThenTitle(lhs: PaletteItem, rhs: PaletteItem) -> Bool {
         if lhs.score == rhs.score {
-            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            if kindSortPriority(for: lhs.kind) == kindSortPriority(for: rhs.kind) {
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+            return kindSortPriority(for: lhs.kind) < kindSortPriority(for: rhs.kind)
         }
         return lhs.score > rhs.score
     }
+
+    private func kindSortPriority(for kind: PaletteItemKind) -> Int {
+        switch kind {
+        case .tab:
+            return 0
+        case .command:
+            return 1
+        case .history:
+            return 2
+        case .bookmark:
+            return 3
+        }
+    }
+}
+
+private enum SearchMode {
+    case all(String)
+    case commandsOnly(String)
 }
