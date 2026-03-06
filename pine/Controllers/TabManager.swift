@@ -2,6 +2,7 @@ import Foundation
 import CoreGraphics
 
 final class TabManager {
+    private static let maxSplitPanes = 4
     private struct ClosedTabState {
         let profileID: UUID
         let urlString: String
@@ -161,6 +162,9 @@ final class TabManager {
     }
 
     func updateTabDropContext(targetTabID: UUID?, splitSide: SplitDropSide) {
+        if store.currentDropTarget == targetTabID, store.intendedSplitSide == splitSide {
+            return
+        }
         store.currentDropTarget = targetTabID
         store.intendedSplitSide = splitSide
     }
@@ -177,7 +181,7 @@ final class TabManager {
             clearTabDropContext()
             return
         }
-        applySplit(primaryTabID: targetTabID, secondaryTabID: draggedTabID)
+        applySplit(primaryTabID: targetTabID, secondaryTabID: draggedTabID, layout: .vertical)
         clearTabDropContext()
     }
 
@@ -188,11 +192,47 @@ final class TabManager {
         }
         switch splitSide {
         case .left:
-            applySplit(primaryTabID: draggedTabID, secondaryTabID: targetTabID)
+            applySplit(primaryTabID: draggedTabID, secondaryTabID: targetTabID, layout: .vertical)
         case .right:
-            applySplit(primaryTabID: targetTabID, secondaryTabID: draggedTabID)
+            applySplit(primaryTabID: targetTabID, secondaryTabID: draggedTabID, layout: .vertical)
+        case .top:
+            applySplit(primaryTabID: draggedTabID, secondaryTabID: targetTabID, layout: .horizontal)
+        case .bottom:
+            applySplit(primaryTabID: targetTabID, secondaryTabID: draggedTabID, layout: .horizontal)
         case .none:
-            applySplit(primaryTabID: targetTabID, secondaryTabID: draggedTabID)
+            applySplit(primaryTabID: targetTabID, secondaryTabID: draggedTabID, layout: .vertical)
+        }
+        clearTabDropContext()
+    }
+
+    func dropDraggedTabOnContent(splitSide: SplitDropSide) {
+        guard let draggedTabID = store.draggedTabID else {
+            clearTabDropContext()
+            return
+        }
+        if splitSide == .none {
+            if store.isSplitViewEnabled {
+                appendSplitTabIfPossible(draggedTabID)
+            }
+            clearTabDropContext()
+            return
+        }
+        guard let anchorTabID = contentDropAnchorTabID(excluding: draggedTabID) else {
+            clearTabDropContext()
+            return
+        }
+
+        switch splitSide {
+        case .left:
+            applySplit(primaryTabID: draggedTabID, secondaryTabID: anchorTabID, layout: .vertical)
+        case .right:
+            applySplit(primaryTabID: anchorTabID, secondaryTabID: draggedTabID, layout: .vertical)
+        case .top:
+            applySplit(primaryTabID: draggedTabID, secondaryTabID: anchorTabID, layout: .horizontal)
+        case .bottom:
+            applySplit(primaryTabID: anchorTabID, secondaryTabID: draggedTabID, layout: .horizontal)
+        case .none:
+            break
         }
         clearTabDropContext()
     }
@@ -214,6 +254,32 @@ final class TabManager {
 
     func selectTab(id: UUID) {
         guard store.tabs.contains(where: { $0.id == id }) else { return }
+        if store.isSplitViewEnabled {
+            let splitIDs = currentSplitTabIDs()
+            if splitIDs.contains(id) {
+                if id == store.selectedTabID {
+                    store.activePane = .primary
+                    return
+                }
+
+                if id == store.splitSecondaryTabID {
+                    store.activePane = .secondary
+                    return
+                }
+
+                if let additionalIndex = store.splitAdditionalTabIDs.firstIndex(of: id) {
+                    let previousSecondaryID = store.splitSecondaryTabID
+                    store.splitAdditionalTabIDs.remove(at: additionalIndex)
+                    if let previousSecondaryID, previousSecondaryID != id {
+                        store.splitAdditionalTabIDs.insert(previousSecondaryID, at: additionalIndex)
+                    }
+                    store.splitSecondaryTabID = id
+                    store.activePane = .secondary
+                    return
+                }
+            }
+        }
+
         let previousPrimaryID = store.selectedTabID
         store.setSelectedTabID(id)
         guard store.isSplitViewEnabled else { return }
@@ -284,6 +350,7 @@ final class TabManager {
     func disableSplitView() {
         store.isSplitViewEnabled = false
         store.splitSecondaryTabID = nil
+        store.splitAdditionalTabIDs = []
         store.activePane = .primary
     }
 
@@ -300,6 +367,7 @@ final class TabManager {
         guard id != primaryID else { return }
         guard store.tabs.contains(where: { $0.id == id }) else { return }
         store.splitSecondaryTabID = id
+        store.splitAdditionalTabIDs.removeAll { $0 == id }
     }
 
     func swapSplitPanes() {
@@ -397,8 +465,15 @@ final class TabManager {
             return
         }
 
+        store.splitAdditionalTabIDs.removeAll { $0 == closedTabID }
+
         if store.splitSecondaryTabID == closedTabID {
-            store.splitSecondaryTabID = preferredSecondaryTabID()
+            if let firstAdditional = store.splitAdditionalTabIDs.first {
+                store.splitSecondaryTabID = firstAdditional
+                store.splitAdditionalTabIDs.removeFirst()
+            } else {
+                store.splitSecondaryTabID = preferredSecondaryTabID()
+            }
             if store.splitSecondaryTabID == nil {
                 disableSplitView()
             }
@@ -417,15 +492,78 @@ final class TabManager {
         }
     }
 
-    private func applySplit(primaryTabID: UUID, secondaryTabID: UUID) {
+    private func applySplit(primaryTabID: UUID, secondaryTabID: UUID, layout: SplitLayout) {
         guard primaryTabID != secondaryTabID else { return }
         guard store.tabs.contains(where: { $0.id == primaryTabID }) else { return }
         guard store.tabs.contains(where: { $0.id == secondaryTabID }) else { return }
 
+        if store.isSplitViewEnabled {
+            let splitIDs = currentSplitTabIDs()
+            if splitIDs.contains(primaryTabID) {
+                if !splitIDs.contains(secondaryTabID) {
+                    appendSplitTabIfPossible(secondaryTabID)
+                } else {
+                    store.splitSecondaryTabID = secondaryTabID
+                    store.splitAdditionalTabIDs.removeAll { $0 == secondaryTabID }
+                }
+                store.setSelectedTabID(primaryTabID)
+                store.isSplitViewEnabled = true
+                store.splitLayout = layout
+                store.activePane = .primary
+                return
+            }
+        }
+
         store.setSelectedTabID(primaryTabID)
         store.isSplitViewEnabled = true
-        store.splitLayout = .vertical
+        store.splitLayout = layout
         store.splitSecondaryTabID = secondaryTabID
+        store.splitAdditionalTabIDs = []
         store.activePane = .primary
+    }
+
+    private func appendSplitTabIfPossible(_ tabID: UUID) {
+        guard tabID != store.selectedTabID else { return }
+        guard store.tabs.contains(where: { $0.id == tabID }) else { return }
+        let existingIDs = currentSplitTabIDs()
+        guard !existingIDs.contains(tabID) else { return }
+        guard existingIDs.count < Self.maxSplitPanes else { return }
+
+        if store.splitSecondaryTabID == nil {
+            store.splitSecondaryTabID = tabID
+            return
+        }
+        store.splitAdditionalTabIDs.append(tabID)
+    }
+
+    private func currentSplitTabIDs() -> [UUID] {
+        var ids: [UUID] = []
+        if let primaryID = store.selectedTabID {
+            ids.append(primaryID)
+        }
+        if let secondaryID = store.splitSecondaryTabID, !ids.contains(secondaryID) {
+            ids.append(secondaryID)
+        }
+        for id in store.splitAdditionalTabIDs where !ids.contains(id) {
+            ids.append(id)
+        }
+        return ids
+    }
+
+    private func contentDropAnchorTabID(excluding draggedTabID: UUID) -> UUID? {
+        if let selectedTabID = store.selectedTabID,
+           selectedTabID != draggedTabID,
+           store.tabs.contains(where: { $0.id == selectedTabID }) {
+            return selectedTabID
+        }
+
+        if store.isSplitViewEnabled,
+           let secondaryTabID = store.splitSecondaryTabID,
+           secondaryTabID != draggedTabID,
+           store.tabs.contains(where: { $0.id == secondaryTabID }) {
+            return secondaryTabID
+        }
+
+        return store.tabs.first(where: { $0.id != draggedTabID })?.id
     }
 }

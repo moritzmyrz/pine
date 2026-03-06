@@ -3,6 +3,7 @@ import Foundation
 
 enum SplitLayout {
     case vertical
+    case horizontal
 }
 
 enum ActivePane {
@@ -14,6 +15,8 @@ enum SplitDropSide {
     case none
     case left
     case right
+    case top
+    case bottom
 }
 
 final class BrowserStore: ObservableObject {
@@ -24,6 +27,7 @@ final class BrowserStore: ObservableObject {
     @Published var selectedTabID: UUID?
     @Published var isSplitViewEnabled = false
     @Published var splitSecondaryTabID: UUID?
+    @Published var splitAdditionalTabIDs: [UUID] = []
     @Published var splitLayout: SplitLayout = .vertical
     @Published var activePane: ActivePane = .primary
     @Published var splitRatio: CGFloat = 0.5

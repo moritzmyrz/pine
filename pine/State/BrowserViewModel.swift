@@ -180,6 +180,9 @@ final class BrowserViewModel: ObservableObject {
     func dropDraggedTabOnSplitSide(targetTabID: UUID, splitSide: SplitDropSide) {
         tabManager.dropDraggedTabOnSplitSide(targetTabID: targetTabID, splitSide: splitSide)
     }
+    func dropDraggedTabOnContent(splitSide: SplitDropSide) {
+        tabManager.dropDraggedTabOnContent(splitSide: splitSide)
+    }
     func selectTab(atOneBasedIndex index: Int) { tabManager.selectTab(atOneBasedIndex: index) }
     func cycleTab(forward: Bool) { tabManager.cycleTab(forward: forward) }
     func closeCurrentTab() {

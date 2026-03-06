@@ -31,7 +31,7 @@ struct BrowserCompactTabStripView: View {
         tabLabel(for: tab)
             .padding(.horizontal, tab.isPinned ? 8 : 10)
             .padding(.vertical, 5)
-            .background(tab.id == viewModel.selectedTabID ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.12))
+            .background(tab.id == viewModel.activeTab?.id ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay {
                 TabDropOverlayView(
