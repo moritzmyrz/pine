@@ -7,120 +7,184 @@ struct BrowserTopBar: View {
     var addressFieldFocus: FocusState<Bool>.Binding
     @Binding var isSiteSettingsPresented: Bool
     @Binding var isTabsOverviewPresented: Bool
-
     let submitAddressBar: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
-            backButton
-            forwardButton
-            reloadStopButton
-            addressField
-            siteSettingsButton
-            tabsButton
-            overflowMenu
+            BrowserNavigationControls(viewModel: viewModel)
+                .controlSize(.small)
+            AddressBarView(
+                viewModel: viewModel,
+                addressInput: $addressInput,
+                addressFieldFocus: addressFieldFocus,
+                submitAddressBar: submitAddressBar
+            )
+            SiteSettingsButton(
+                viewModel: viewModel,
+                isPresented: $isSiteSettingsPresented
+            )
+            TabsOverviewButton(
+                tabCount: viewModel.tabs.count,
+                isPresented: $isTabsOverviewPresented
+            )
+            BrowserOverflowMenu(
+                viewModel: viewModel,
+                isTabsOverviewPresented: $isTabsOverviewPresented
+            )
         }
         .controlSize(.small)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(.thinMaterial)
     }
+}
 
-    private var backButton: some View {
-        Button {
-            viewModel.goBackSelectedTab()
-        } label: {
-            Image(systemName: "chevron.left")
-        }
-        .disabled(!(viewModel.activeTab?.canGoBack ?? false))
-        .help("Back")
-    }
+struct BrowserSidebarChrome: View {
+    @ObservedObject var viewModel: BrowserViewModel
+    @Binding var addressInput: String
+    var addressFieldFocus: FocusState<Bool>.Binding
+    @Binding var isSiteSettingsPresented: Bool
+    @Binding var isTabsOverviewPresented: Bool
+    let submitAddressBar: () -> Void
 
-    private var forwardButton: some View {
-        Button {
-            viewModel.goForwardSelectedTab()
-        } label: {
-            Image(systemName: "chevron.right")
-        }
-        .disabled(!(viewModel.activeTab?.canGoForward ?? false))
-        .help("Forward")
-    }
+    var body: some View {
+        VStack(spacing: 10) {
+            BrowserNavigationControls(viewModel: viewModel)
+                .controlSize(.small)
 
-    private var reloadStopButton: some View {
-        Button {
-            if viewModel.activeTab?.isLoading == true {
-                viewModel.stopLoadingSelectedTab()
-            } else {
-                viewModel.reloadSelectedTab()
-            }
-        } label: {
-            Image(systemName: (viewModel.activeTab?.isLoading == true) ? "xmark" : "arrow.clockwise")
-        }
-        .help((viewModel.activeTab?.isLoading == true) ? "Stop Loading" : "Reload")
-    }
+            AddressBarView(
+                viewModel: viewModel,
+                addressInput: $addressInput,
+                addressFieldFocus: addressFieldFocus,
+                submitAddressBar: submitAddressBar
+            )
+            .controlSize(.small)
 
-    private var addressField: some View {
-        HStack(spacing: 6) {
-            if let favicon = selectedFavicon {
-                Image(nsImage: favicon)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 14, height: 14)
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
-            } else {
-                Image(systemName: "globe")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 14, height: 14)
-            }
-
-            TextField("Search or enter website name", text: $addressInput)
-                .textFieldStyle(.plain)
-                .focused(addressFieldFocus)
-                .onTapGesture {
-                    addressFieldFocus.wrappedValue = true
-                    DispatchQueue.main.async {
-                        NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
-                    }
+            HStack(spacing: 8) {
+                SiteSettingsButton(
+                    viewModel: viewModel,
+                    isPresented: $isSiteSettingsPresented
+                )
+                TabsOverviewButton(
+                    tabCount: viewModel.tabs.count,
+                    isPresented: $isTabsOverviewPresented
+                )
+                Button {
+                    viewModel.newTab(focusAddressBar: true)
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 18)
                 }
-                .onSubmit {
-                    submitAddressBar()
-                }
+                .help("New Tab")
+
+                Spacer(minLength: 0)
+
+                BrowserOverflowMenu(
+                    viewModel: viewModel,
+                    isTabsOverviewPresented: $isTabsOverviewPresented
+                )
+            }
+            .controlSize(.small)
+
+            Divider()
+
+            TabListView(viewModel: viewModel)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(Color.gray.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 9))
-        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(.thinMaterial)
     }
+}
 
-    private var siteSettingsButton: some View {
+private struct SiteSettingsButton: View {
+    @ObservedObject var viewModel: BrowserViewModel
+    @Binding var isPresented: Bool
+
+    var body: some View {
         Button {
-            isSiteSettingsPresented = true
+            isPresented = true
         } label: {
             Image(systemName: siteLockSymbol)
         }
         .disabled(currentHost == nil)
         .help("Site Settings")
-        .popover(isPresented: $isSiteSettingsPresented, arrowEdge: .bottom) {
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             SiteSettingsPopoverView(viewModel: viewModel)
         }
     }
 
-    private var tabsButton: some View {
+    private var currentHost: String? {
+        viewModel.currentSiteHost()
+    }
+
+    private var siteLockSymbol: String {
+        guard let urlString = viewModel.activeTab?.urlString,
+              let scheme = URL(string: urlString)?.scheme?.lowercased() else {
+            return "lock.open"
+        }
+        return scheme == "https" ? "lock" : "lock.open"
+    }
+}
+
+private struct TabsOverviewButton: View {
+    let tabCount: Int
+    @Binding var isPresented: Bool
+
+    var body: some View {
         Button {
-            isTabsOverviewPresented = true
+            isPresented = true
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "square.on.square")
-                Text("\(viewModel.tabs.count)")
+                Text("\(tabCount)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .help("Tabs Overview")
     }
+}
 
-    private var overflowMenu: some View {
+private struct BrowserNavigationControls: View {
+    @ObservedObject var viewModel: BrowserViewModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                viewModel.goBackSelectedTab()
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(!(viewModel.activeTab?.canGoBack ?? false))
+            .help("Back")
+
+            Button {
+                viewModel.goForwardSelectedTab()
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(!(viewModel.activeTab?.canGoForward ?? false))
+            .help("Forward")
+
+            Button {
+                if viewModel.activeTab?.isLoading == true {
+                    viewModel.stopLoadingSelectedTab()
+                } else {
+                    viewModel.reloadSelectedTab()
+                }
+            } label: {
+                Image(systemName: (viewModel.activeTab?.isLoading == true) ? "xmark" : "arrow.clockwise")
+            }
+            .help((viewModel.activeTab?.isLoading == true) ? "Stop Loading" : "Reload")
+        }
+    }
+}
+
+private struct BrowserOverflowMenu: View {
+    @ObservedObject var viewModel: BrowserViewModel
+    @Binding var isTabsOverviewPresented: Bool
+
+    var body: some View {
         Menu {
             Button("History") {
                 viewModel.showHistory()
@@ -163,6 +227,16 @@ struct BrowserTopBar: View {
 
             Button(viewModel.isCurrentPageBookmarked() ? "Remove Bookmark" : "Add Bookmark") {
                 viewModel.toggleBookmarkForSelectedTab()
+            }
+            Menu("Layout") {
+                Picker("Layout", selection: Binding(
+                    get: { viewModel.sessionSettings.layoutStyle },
+                    set: { viewModel.setLayoutStyle($0) }
+                )) {
+                    ForEach(LayoutStyle.allCases) { style in
+                        Text(style.title).tag(style)
+                    }
+                }
             }
             Button(viewModel.sessionSettings.showBookmarksBar ? "Hide Bookmark Bar" : "Show Bookmark Bar") {
                 viewModel.toggleBookmarksBar()
@@ -250,28 +324,16 @@ struct BrowserTopBar: View {
             Button(viewModel.sessionSettings.showCompactTabStrip ? "Hide Tab Strip" : "Show Tab Strip") {
                 viewModel.setShowCompactTabStrip(!viewModel.sessionSettings.showCompactTabStrip)
             }
+            .disabled(viewModel.sessionSettings.layoutStyle == .sidebar)
+
+            Button(viewModel.sessionSettings.zenModeKeepsSidebar ? "Zen Mode Hides Sidebar" : "Zen Mode Keeps Sidebar") {
+                viewModel.setZenModeKeepsSidebar(!viewModel.sessionSettings.zenModeKeepsSidebar)
+            }
         } label: {
             Image(systemName: "ellipsis")
                 .frame(width: 20)
         }
         .help("Menu")
-    }
-
-    private var selectedFavicon: NSImage? {
-        guard let data = viewModel.activeTab?.faviconData else { return nil }
-        return NSImage(data: data)
-    }
-
-    private var currentHost: String? {
-        viewModel.currentSiteHost()
-    }
-
-    private var siteLockSymbol: String {
-        guard let urlString = viewModel.activeTab?.urlString,
-              let scheme = URL(string: urlString)?.scheme?.lowercased() else {
-            return "lock.open"
-        }
-        return scheme == "https" ? "lock" : "lock.open"
     }
 
     private var readerModeButtonTitle: String {

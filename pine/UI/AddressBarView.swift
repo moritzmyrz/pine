@@ -3,32 +3,12 @@ import SwiftUI
 
 struct AddressBarView: View {
     @ObservedObject var viewModel: BrowserViewModel
-    @State private var addressInput = ""
-    @State private var isSiteSettingsPresented = false
-    @FocusState private var isAddressFieldFocused: Bool
+    @Binding var addressInput: String
+    var addressFieldFocus: FocusState<Bool>.Binding
+    let submitAddressBar: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Button {
-                viewModel.goBackSelectedTab()
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .disabled(!(viewModel.selectedTab?.canGoBack ?? false))
-
-            Button {
-                viewModel.goForwardSelectedTab()
-            } label: {
-                Image(systemName: "chevron.right")
-            }
-            .disabled(!(viewModel.selectedTab?.canGoForward ?? false))
-
-            Button {
-                viewModel.reloadSelectedTab()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-
+        HStack(spacing: 6) {
             if let favicon = selectedFavicon {
                 Image(nsImage: favicon)
                     .resizable()
@@ -41,80 +21,29 @@ struct AddressBarView: View {
                     .frame(width: 14, height: 14)
             }
 
-            Button {
-                isSiteSettingsPresented = true
-            } label: {
-                Image(systemName: siteLockSymbol)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .disabled(currentHost == nil)
-            .popover(isPresented: $isSiteSettingsPresented, arrowEdge: .bottom) {
-                SiteSettingsPopoverView(viewModel: viewModel)
-            }
-
-            TextField("Enter URL", text: $addressInput)
-                .textFieldStyle(.roundedBorder)
-                .focused($isAddressFieldFocused)
+            TextField("Search or enter website name", text: $addressInput)
+                .textFieldStyle(.plain)
+                .focused(addressFieldFocus)
+                .onTapGesture {
+                    addressFieldFocus.wrappedValue = true
+                    DispatchQueue.main.async {
+                        NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                    }
+                }
                 .onSubmit {
                     submitAddressBar()
                 }
-
-            Button("Go") {
-                submitAddressBar()
-            }
-            .buttonStyle(.borderedProminent)
         }
-        .padding(12)
-        .onAppear {
-            addressInput = currentTabURL
-        }
-        .onChange(of: viewModel.selectedTabID) {
-            addressInput = currentTabURL
-        }
-        .onChange(of: currentTabURL) {
-            guard !isAddressFieldFocused else { return }
-            addressInput = currentTabURL
-        }
-        .onChange(of: isAddressFieldFocused) {
-            if !isAddressFieldFocused {
-                addressInput = currentTabURL
-            }
-        }
-        .onChange(of: viewModel.addressBarFocusToken) {
-            isAddressFieldFocused = true
-            guard viewModel.shouldSelectAllInAddressBar else { return }
-
-            DispatchQueue.main.async {
-                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
-                viewModel.consumeAddressBarSelectAllRequest()
-            }
-        }
-    }
-
-    private var currentTabURL: String {
-        viewModel.selectedTab?.urlString ?? ""
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.gray.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .frame(maxWidth: .infinity)
     }
 
     private var selectedFavicon: NSImage? {
-        guard let faviconData = viewModel.selectedTab?.faviconData else { return nil }
+        guard let faviconData = viewModel.activeTab?.faviconData else { return nil }
         return NSImage(data: faviconData)
-    }
-
-    private var currentHost: String? {
-        viewModel.currentSiteHost()
-    }
-
-    private var siteLockSymbol: String {
-        guard let urlString = viewModel.selectedTab?.urlString,
-              let scheme = URL(string: urlString)?.scheme?.lowercased() else {
-            return "lock.open"
-        }
-        return scheme == "https" ? "lock" : "lock.open"
-    }
-
-    private func submitAddressBar() {
-        viewModel.loadSelectedTab(from: addressInput)
     }
 }
 
@@ -182,6 +111,3 @@ struct SiteSettingsPopoverView: View {
     }
 }
 
-#Preview {
-    AddressBarView(viewModel: BrowserViewModel())
-}

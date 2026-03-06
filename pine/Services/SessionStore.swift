@@ -1,5 +1,21 @@
 import Foundation
 
+enum LayoutStyle: String, Codable, CaseIterable, Identifiable {
+    case topBar
+    case sidebar
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .topBar:
+            return "Top Bar"
+        case .sidebar:
+            return "Sidebar"
+        }
+    }
+}
+
 struct PersistedTab: Codable {
     let id: UUID
     let profileID: UUID?
@@ -63,8 +79,10 @@ struct BrowserSettings: Codable {
     var restorePreviousSession: Bool
     var includePrivateTabsInSession: Bool
     var showCompactTabStrip: Bool
+    var layoutStyle: LayoutStyle
     var showBookmarksBar: Bool
     var zenModeHidesToolbar: Bool
+    var zenModeKeepsSidebar: Bool
     var escExitsZenMode: Bool
     var hideHTTPSInAddressBar: Bool
     var hideWWWInAddressBar: Bool
@@ -77,8 +95,10 @@ struct BrowserSettings: Codable {
         restorePreviousSession: true,
         includePrivateTabsInSession: false,
         showCompactTabStrip: true,
+        layoutStyle: .topBar,
         showBookmarksBar: true,
         zenModeHidesToolbar: true,
+        zenModeKeepsSidebar: false,
         escExitsZenMode: true,
         hideHTTPSInAddressBar: true,
         hideWWWInAddressBar: true,
@@ -92,8 +112,10 @@ struct BrowserSettings: Codable {
         case restorePreviousSession
         case includePrivateTabsInSession
         case showCompactTabStrip
+        case layoutStyle
         case showBookmarksBar
         case zenModeHidesToolbar
+        case zenModeKeepsSidebar
         case escExitsZenMode
         case hideHTTPSInAddressBar
         case hideWWWInAddressBar
@@ -107,8 +129,10 @@ struct BrowserSettings: Codable {
         restorePreviousSession: Bool,
         includePrivateTabsInSession: Bool,
         showCompactTabStrip: Bool,
+        layoutStyle: LayoutStyle,
         showBookmarksBar: Bool,
         zenModeHidesToolbar: Bool,
+        zenModeKeepsSidebar: Bool,
         escExitsZenMode: Bool,
         hideHTTPSInAddressBar: Bool,
         hideWWWInAddressBar: Bool,
@@ -120,8 +144,10 @@ struct BrowserSettings: Codable {
         self.restorePreviousSession = restorePreviousSession
         self.includePrivateTabsInSession = includePrivateTabsInSession
         self.showCompactTabStrip = showCompactTabStrip
+        self.layoutStyle = layoutStyle
         self.showBookmarksBar = showBookmarksBar
         self.zenModeHidesToolbar = zenModeHidesToolbar
+        self.zenModeKeepsSidebar = zenModeKeepsSidebar
         self.escExitsZenMode = escExitsZenMode
         self.hideHTTPSInAddressBar = hideHTTPSInAddressBar
         self.hideWWWInAddressBar = hideWWWInAddressBar
@@ -136,8 +162,10 @@ struct BrowserSettings: Codable {
         restorePreviousSession = try container.decodeIfPresent(Bool.self, forKey: .restorePreviousSession) ?? true
         includePrivateTabsInSession = try container.decodeIfPresent(Bool.self, forKey: .includePrivateTabsInSession) ?? false
         showCompactTabStrip = try container.decodeIfPresent(Bool.self, forKey: .showCompactTabStrip) ?? true
+        layoutStyle = try container.decodeIfPresent(LayoutStyle.self, forKey: .layoutStyle) ?? .topBar
         showBookmarksBar = try container.decodeIfPresent(Bool.self, forKey: .showBookmarksBar) ?? true
         zenModeHidesToolbar = try container.decodeIfPresent(Bool.self, forKey: .zenModeHidesToolbar) ?? true
+        zenModeKeepsSidebar = try container.decodeIfPresent(Bool.self, forKey: .zenModeKeepsSidebar) ?? false
         escExitsZenMode = try container.decodeIfPresent(Bool.self, forKey: .escExitsZenMode) ?? true
         hideHTTPSInAddressBar = try container.decodeIfPresent(Bool.self, forKey: .hideHTTPSInAddressBar) ?? true
         hideWWWInAddressBar = try container.decodeIfPresent(Bool.self, forKey: .hideWWWInAddressBar) ?? true

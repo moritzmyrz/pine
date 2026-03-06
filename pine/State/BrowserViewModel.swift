@@ -250,8 +250,10 @@ final class BrowserViewModel: ObservableObject {
     func setRestorePreviousSessionEnabled(_ enabled: Bool) { sessionManager.setRestorePreviousSessionEnabled(enabled) }
     func setIncludePrivateTabsInSession(_ enabled: Bool) { sessionManager.setIncludePrivateTabsInSession(enabled) }
     func setShowCompactTabStrip(_ enabled: Bool) { sessionManager.setShowCompactTabStrip(enabled) }
+    func setLayoutStyle(_ style: LayoutStyle) { sessionManager.setLayoutStyle(style) }
     func setShowBookmarksBar(_ enabled: Bool) { sessionManager.setShowBookmarksBar(enabled) }
     func setZenModeHidesToolbar(_ enabled: Bool) { sessionManager.setZenModeHidesToolbar(enabled) }
+    func setZenModeKeepsSidebar(_ enabled: Bool) { sessionManager.setZenModeKeepsSidebar(enabled) }
     func setEscExitsZenMode(_ enabled: Bool) { sessionManager.setEscExitsZenMode(enabled) }
     func setHideHTTPSInAddressBar(_ enabled: Bool) { sessionManager.setHideHTTPSInAddressBar(enabled) }
     func setHideWWWInAddressBar(_ enabled: Bool) { sessionManager.setHideWWWInAddressBar(enabled) }

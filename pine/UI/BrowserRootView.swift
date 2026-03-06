@@ -88,76 +88,33 @@ struct BrowserRootView: View {
     private var rootLayout: some View {
         let zenStyle = ZenModeStyle(
             isZenModeEnabled: viewModel.isZenModeEnabled,
-            hideToolbarInZenMode: viewModel.sessionSettings.zenModeHidesToolbar
+            hideToolbarInZenMode: viewModel.sessionSettings.zenModeHidesToolbar,
+            keepSidebarInZenMode: viewModel.sessionSettings.zenModeKeepsSidebar
         )
 
         return ZStack {
-            VStack(spacing: 0) {
-                if !zenStyle.shouldHideToolbar {
-                    BrowserTopBar(
-                        viewModel: viewModel,
-                        addressInput: addressBarInputBinding,
-                        addressFieldFocus: $isAddressFieldFocused,
-                        isSiteSettingsPresented: siteSettingsPresentedBinding,
-                        isTabsOverviewPresented: tabsOverviewSheetBinding,
-                        submitAddressBar: submitAddressBar
-                    )
-                    loadingProgressBar
-                }
-
-                if viewModel.sessionSettings.showCompactTabStrip, !zenStyle.shouldHideTabStrip {
-                    Divider()
-                    tabStrip
-                }
-
-                if viewModel.sessionSettings.showBookmarksBar, !zenStyle.shouldHideBookmarksBar {
-                    Divider()
-                    BookmarksBarView(viewModel: viewModel)
-                }
-
-                GeometryReader { geometry in
-                    browserContentArea
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .overlay {
-                            if viewModel.store.isDraggingTab {
-                                ContentAreaDragDestinationView(
-                                    onDragMove: { location in
-                                        let side = snapHoverController.splitSide(for: location, in: geometry.size)
-                                        viewModel.updateTabDropContext(targetTabID: nil, splitSide: side)
-                                    },
-                                    onDragExit: {
-                                        viewModel.updateTabDropContext(targetTabID: nil, splitSide: .none)
-                                    },
-                                    onDrop: { location in
-                                        let side = snapHoverController.splitSide(for: location, in: geometry.size)
-                                        viewModel.dropDraggedTabOnContent(splitSide: side)
-                                        return true
-                                    }
-                                )
-                                .frame(width: geometry.size.width, height: geometry.size.height)
-                            }
-                        }
-                        .overlay {
-                            TabSnapPreviewOverlayView(
-                                hoveredSide: contentSnapPreviewSide,
-                                draggedTab: draggedTab,
-                                anchorTab: snapAnchorTab
+            Group {
+                if viewModel.sessionSettings.layoutStyle == .sidebar {
+                    HStack(spacing: 0) {
+                        if !zenStyle.shouldHideSidebar {
+                            BrowserSidebarChrome(
+                                viewModel: viewModel,
+                                addressInput: addressBarInputBinding,
+                                addressFieldFocus: $isAddressFieldFocused,
+                                isSiteSettingsPresented: siteSettingsPresentedBinding,
+                                isTabsOverviewPresented: tabsOverviewSheetBinding,
+                                submitAddressBar: submitAddressBar
                             )
+                            .frame(width: sidebarWidth)
+                            Divider()
                         }
-                }
-
-                if viewModel.downloadController.shouldShowShelf, !zenStyle.shouldHideDownloadsShelf {
-                    Divider()
-                    DownloadsShelfView(
-                        downloadManager: viewModel.downloadManager,
-                        openDownloadsSheet: { viewModel.showDownloads() },
-                        closeShelf: { viewModel.downloadController.dismissShelf() }
-                    )
+                        browserSurface(zenStyle: zenStyle)
+                    }
+                } else {
+                    browserSurface(zenStyle: zenStyle)
                 }
             }
-            .background {
-                shortcutButtons
-            }
+            .background { shortcutButtons }
 
             CommandPaletteView(viewModel: commandPaletteViewModel)
                 .animation(.easeOut(duration: 0.15), value: commandPaletteViewModel.isPresented)
@@ -211,6 +168,75 @@ struct BrowserRootView: View {
                 } else {
                     viewModel.focusActiveWebViewIfPossible()
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func browserSurface(zenStyle: ZenModeStyle) -> some View {
+        VStack(spacing: 0) {
+            if viewModel.sessionSettings.layoutStyle == .topBar, !zenStyle.shouldHideToolbar {
+                BrowserTopBar(
+                    viewModel: viewModel,
+                    addressInput: addressBarInputBinding,
+                    addressFieldFocus: $isAddressFieldFocused,
+                    isSiteSettingsPresented: siteSettingsPresentedBinding,
+                    isTabsOverviewPresented: tabsOverviewSheetBinding,
+                    submitAddressBar: submitAddressBar
+                )
+                loadingProgressBar
+            }
+
+            if viewModel.sessionSettings.layoutStyle == .topBar,
+               viewModel.sessionSettings.showCompactTabStrip,
+               !zenStyle.shouldHideTabStrip {
+                Divider()
+                tabStrip
+            }
+
+            if viewModel.sessionSettings.showBookmarksBar, !zenStyle.shouldHideBookmarksBar {
+                Divider()
+                BookmarksBarView(viewModel: viewModel)
+            }
+
+            GeometryReader { geometry in
+                browserContentArea
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .overlay {
+                        if viewModel.store.isDraggingTab {
+                            ContentAreaDragDestinationView(
+                                onDragMove: { location in
+                                    let side = snapHoverController.splitSide(for: location, in: geometry.size)
+                                    viewModel.updateTabDropContext(targetTabID: nil, splitSide: side)
+                                },
+                                onDragExit: {
+                                    viewModel.updateTabDropContext(targetTabID: nil, splitSide: .none)
+                                },
+                                onDrop: { location in
+                                    let side = snapHoverController.splitSide(for: location, in: geometry.size)
+                                    viewModel.dropDraggedTabOnContent(splitSide: side)
+                                    return true
+                                }
+                            )
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                        }
+                    }
+                    .overlay {
+                        TabSnapPreviewOverlayView(
+                            hoveredSide: contentSnapPreviewSide,
+                            draggedTab: draggedTab,
+                            anchorTab: snapAnchorTab
+                        )
+                    }
+            }
+
+            if viewModel.downloadController.shouldShowShelf, !zenStyle.shouldHideDownloadsShelf {
+                Divider()
+                DownloadsShelfView(
+                    downloadManager: viewModel.downloadManager,
+                    openDownloadsSheet: { viewModel.showDownloads() },
+                    closeShelf: { viewModel.downloadController.dismissShelf() }
+                )
             }
         }
     }
@@ -450,6 +476,10 @@ struct BrowserRootView: View {
 
     private var tabStrip: some View {
         BrowserCompactTabStripView(viewModel: viewModel)
+    }
+
+    private var sidebarWidth: CGFloat {
+        290
     }
 
     private var profileDeleteConfirmationBinding: Binding<Bool> {

@@ -88,6 +88,11 @@ final class SessionManager {
         sessionStore.saveSettings(store.sessionSettings)
     }
 
+    func setLayoutStyle(_ style: LayoutStyle) {
+        store.sessionSettings.layoutStyle = style
+        sessionStore.saveSettings(store.sessionSettings)
+    }
+
     func setShowBookmarksBar(_ enabled: Bool) {
         store.sessionSettings.showBookmarksBar = enabled
         sessionStore.saveSettings(store.sessionSettings)
@@ -95,6 +100,11 @@ final class SessionManager {
 
     func setZenModeHidesToolbar(_ enabled: Bool) {
         store.sessionSettings.zenModeHidesToolbar = enabled
+        sessionStore.saveSettings(store.sessionSettings)
+    }
+
+    func setZenModeKeepsSidebar(_ enabled: Bool) {
+        store.sessionSettings.zenModeKeepsSidebar = enabled
         sessionStore.saveSettings(store.sessionSettings)
     }
 

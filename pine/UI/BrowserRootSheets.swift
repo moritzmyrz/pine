@@ -262,10 +262,19 @@ struct SettingsSheetView: View {
         NavigationStack {
             Form {
                 Section("Appearance") {
+                    Picker("Layout", selection: Binding(
+                        get: { viewModel.sessionSettings.layoutStyle },
+                        set: { viewModel.setLayoutStyle($0) }
+                    )) {
+                        ForEach(LayoutStyle.allCases) { style in
+                            Text(style.title).tag(style)
+                        }
+                    }
                     Toggle("Show compact tab strip", isOn: Binding(
                         get: { viewModel.sessionSettings.showCompactTabStrip },
                         set: { viewModel.setShowCompactTabStrip($0) }
                     ))
+                    .disabled(viewModel.sessionSettings.layoutStyle == .sidebar)
                     Toggle("Show bookmark bar", isOn: Binding(
                         get: { viewModel.sessionSettings.showBookmarksBar },
                         set: { viewModel.setShowBookmarksBar($0) }
@@ -274,6 +283,11 @@ struct SettingsSheetView: View {
                         get: { viewModel.sessionSettings.zenModeHidesToolbar },
                         set: { viewModel.setZenModeHidesToolbar($0) }
                     ))
+                    Toggle("Zen Mode keeps sidebar", isOn: Binding(
+                        get: { viewModel.sessionSettings.zenModeKeepsSidebar },
+                        set: { viewModel.setZenModeKeepsSidebar($0) }
+                    ))
+                    .disabled(viewModel.sessionSettings.layoutStyle == .topBar)
                     Toggle("Esc exits Zen Mode", isOn: Binding(
                         get: { viewModel.sessionSettings.escExitsZenMode },
                         set: { viewModel.setEscExitsZenMode($0) }
