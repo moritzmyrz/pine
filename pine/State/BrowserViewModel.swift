@@ -23,7 +23,11 @@ final class BrowserViewModel: ObservableObject {
     let sitePermissionsStore: SitePermissionsStore
     let contentBlockerService: ContentBlockerService
 
+    private let shouldRestoreSession: Bool
     private var cancellables: Set<AnyCancellable> = []
+    private var targetWindowNumber: Int?
+
+    var onRequestWindowClose: (() -> Void)?
 
     var tabs: [Tab] { store.tabs }
     var selectedTabID: UUID? { store.selectedTabID }
@@ -50,6 +54,7 @@ final class BrowserViewModel: ObservableObject {
     var currentProfile: Profile? { store.currentProfile }
 
     init(
+        shouldRestoreSession: Bool = true,
         historyStore: HistoryStore = HistoryStore(),
         bookmarksStore: BookmarksStore = BookmarksStore(),
         downloadManager: DownloadManager = DownloadManager(),
@@ -67,6 +72,7 @@ final class BrowserViewModel: ObservableObject {
         self.workspaceStore = workspaceStore
         self.sitePermissionsStore = sitePermissionsStore
         self.contentBlockerService = contentBlockerService
+        self.shouldRestoreSession = shouldRestoreSession
 
         let store = BrowserStore()
         self.store = store
@@ -151,7 +157,14 @@ final class BrowserViewModel: ObservableObject {
         tabManager.newPrivateTab(urlString: urlString, focusAddressBar: focusAddressBar)
     }
 
-    func closeTab(id: UUID) { tabManager.closeTab(id: id) }
+    func closeTab(id: UUID) {
+        guard store.tabs.contains(where: { $0.id == id }) else { return }
+        if store.tabs.count == 1 {
+            onRequestWindowClose?()
+            return
+        }
+        tabManager.closeTab(id: id)
+    }
     func duplicateTab(id: UUID) { tabManager.duplicateTab(id: id) }
     func closeOtherTabs(keeping id: UUID) { tabManager.closeOtherTabs(keeping: id) }
     func closeTabsToRight(of id: UUID) { tabManager.closeTabsToRight(of: id) }
@@ -159,7 +172,14 @@ final class BrowserViewModel: ObservableObject {
     func reorderTab(draggedID: UUID, before targetID: UUID) { tabManager.reorderTab(draggedID: draggedID, before: targetID) }
     func selectTab(atOneBasedIndex index: Int) { tabManager.selectTab(atOneBasedIndex: index) }
     func cycleTab(forward: Bool) { tabManager.cycleTab(forward: forward) }
-    func closeCurrentTab() { tabManager.closeCurrentTab() }
+    func closeCurrentTab() {
+        guard store.selectedTabID != nil else { return }
+        if store.tabs.count == 1 {
+            onRequestWindowClose?()
+            return
+        }
+        tabManager.closeCurrentTab()
+    }
     func reopenClosedTab() { tabManager.reopenClosedTab() }
     func selectTab(id: UUID) { tabManager.selectTab(id: id) }
     func toggleSplitView() { tabManager.toggleSplitView() }
@@ -309,6 +329,7 @@ final class BrowserViewModel: ObservableObject {
     func toggleBookmarkForSelectedTab() { navigationController.toggleBookmarkForSelectedTab() }
     func refreshFavicon(for tabID: UUID, from webView: WKWebView) { navigationController.refreshFavicon(for: tabID, from: webView) }
     func applyStoredPageSettings(for tabID: UUID, in webView: WKWebView) { navigationController.applyStoredPageSettings(for: tabID, in: webView) }
+    func setTargetWindowNumber(_ windowNumber: Int?) { targetWindowNumber = windowNumber }
 
     private func bind() {
         store.objectWillChange
@@ -495,13 +516,15 @@ final class BrowserViewModel: ObservableObject {
         } ?? defaultProfileID
         store.currentProfileID = resolvedCurrentProfileID
 
-        let restored = sessionManager.restoreSessionIfNeeded(
-            availableProfiles: store.profiles,
-            resolvedCurrentProfileID: resolvedCurrentProfileID,
-            onTabNeedsLoad: { [weak self] tabID, urlString in
-                self?.navigationController.loadURL(urlString, in: tabID)
-            }
-        )
+        let restored = shouldRestoreSession
+            ? sessionManager.restoreSessionIfNeeded(
+                availableProfiles: store.profiles,
+                resolvedCurrentProfileID: resolvedCurrentProfileID,
+                onTabNeedsLoad: { [weak self] tabID, urlString in
+                    self?.navigationController.loadURL(urlString, in: tabID)
+                }
+            )
+            : false
         if !restored {
             _ = tabManager.newTab(
                 urlString: "https://example.com",
@@ -520,73 +543,155 @@ final class BrowserViewModel: ObservableObject {
 
     private func bindNotifications() {
         NotificationCenter.default.publisher(for: .pineNewTab)
-            .sink { [weak self] _ in self?.newTab(focusAddressBar: true) }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.newTab(focusAddressBar: true)
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineNewPrivateTab)
-            .sink { [weak self] _ in self?.newPrivateTab(focusAddressBar: true) }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.newPrivateTab(focusAddressBar: true)
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineCloseTab)
-            .sink { [weak self] _ in self?.closeCurrentTab() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.closeCurrentTab()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineReload)
-            .sink { [weak self] _ in self?.reloadSelectedTab() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.reloadSelectedTab()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineGoBack)
-            .sink { [weak self] _ in self?.goBackSelectedTab() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.goBackSelectedTab()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineGoForward)
-            .sink { [weak self] _ in self?.goForwardSelectedTab() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.goForwardSelectedTab()
+            }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineShowHistory)
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.showHistory()
+            }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineShowBookmarks)
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.showBookmarks()
+            }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineShowTabSearch)
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.store.isTabSearchPresented = true
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineCycleTabsBackward)
-            .sink { [weak self] _ in self?.cycleTab(forward: false) }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.cycleTab(forward: false)
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineCycleTabsForward)
-            .sink { [weak self] _ in self?.cycleTab(forward: true) }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.cycleTab(forward: true)
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineSelectTabAtIndex)
             .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
                 guard let index = notification.userInfo?["index"] as? Int else { return }
                 self?.selectTab(atOneBasedIndex: index)
             }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineReopenClosedTab)
-            .sink { [weak self] _ in self?.reopenClosedTab() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.reopenClosedTab()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineZoomIn)
-            .sink { [weak self] _ in self?.zoomInSelectedTab() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.zoomInSelectedTab()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineZoomOut)
-            .sink { [weak self] _ in self?.zoomOutSelectedTab() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.zoomOutSelectedTab()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineZoomReset)
-            .sink { [weak self] _ in self?.resetZoomSelectedTab() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.resetZoomSelectedTab()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineToggleReaderMode)
-            .sink { [weak self] _ in self?.toggleReaderModeForSelectedTab() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.toggleReaderModeForSelectedTab()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineViewSource)
-            .sink { [weak self] _ in self?.viewSourceForSelectedTab() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.viewSourceForSelectedTab()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineOpenCurrentPageInSafari)
-            .sink { [weak self] _ in self?.openSelectedPageInSafari() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.openSelectedPageInSafari()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineCopyCleanLink)
-            .sink { [weak self] _ in self?.copyCleanLinkForSelectedTab() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.copyCleanLinkForSelectedTab()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineToggleSplitView)
-            .sink { [weak self] _ in self?.toggleSplitView() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.toggleSplitView()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineSwitchActivePaneLeft)
-            .sink { [weak self] _ in self?.switchActivePane(forward: false) }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.switchActivePane(forward: false)
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineSwitchActivePaneRight)
-            .sink { [weak self] _ in self?.switchActivePane(forward: true) }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.switchActivePane(forward: true)
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineSwapSplitPanes)
-            .sink { [weak self] _ in self?.swapSplitPanes() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.swapSplitPanes()
+            }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineResetSplitDivider)
-            .sink { [weak self] _ in self?.resetSplitRatio() }
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.resetSplitRatio()
+            }
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
@@ -620,5 +725,13 @@ final class BrowserViewModel: ObservableObject {
     private func focusWebView(for tabID: UUID) {
         let webView = navigationController.webView(for: tabID)
         NSApp.keyWindow?.makeFirstResponder(webView)
+    }
+
+    private func isCommandForCurrentWindow(_ notification: Notification) -> Bool {
+        guard let notificationWindowNumber = notification.userInfo?[AppCommandUserInfoKey.windowNumber] as? Int else {
+            return false
+        }
+        guard let targetWindowNumber else { return false }
+        return notificationWindowNumber == targetWindowNumber
     }
 }

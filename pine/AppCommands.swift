@@ -1,5 +1,9 @@
 import Foundation
 
+enum AppCommandUserInfoKey {
+    static let windowNumber = "windowNumber"
+}
+
 extension Notification.Name {
     static let pineNewTab = Notification.Name("pine.newTab")
     static let pineNewPrivateTab = Notification.Name("pine.newPrivateTab")

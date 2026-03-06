@@ -5,81 +5,92 @@
 //  Created by Moritz André Myrseth on 2026-03-05.
 //
 
+import AppKit
 import SwiftUI
 
 @main
 struct pineApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.openWindow) private var openWindow
+
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        WindowGroup(id: "browser-window") {
+            BrowserRootView()
         }
         .commands {
-            CommandGroup(after: .newItem) {
+            CommandGroup(replacing: .newItem) {
+                Button("New Window") {
+                    openWindow(id: "browser-window")
+                }
+                .keyboardShortcut("n", modifiers: .command)
+
+                Divider()
+
                 Button("New Tab") {
-                    NotificationCenter.default.post(name: .pineNewTab, object: nil)
+                    postWindowCommand(.pineNewTab)
                 }
                 .keyboardShortcut("t", modifiers: .command)
 
                 Button("New Private Tab") {
-                    NotificationCenter.default.post(name: .pineNewPrivateTab, object: nil)
+                    postWindowCommand(.pineNewPrivateTab)
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
 
                 Button("Close Tab") {
-                    NotificationCenter.default.post(name: .pineCloseTab, object: nil)
+                    postWindowCommand(.pineCloseTab)
                 }
                 .keyboardShortcut("w", modifiers: .command)
             }
 
             CommandGroup(after: .toolbar) {
                 Button("Reload") {
-                    NotificationCenter.default.post(name: .pineReload, object: nil)
+                    postWindowCommand(.pineReload)
                 }
                 .keyboardShortcut("r", modifiers: .command)
 
                 Button("Back") {
-                    NotificationCenter.default.post(name: .pineGoBack, object: nil)
+                    postWindowCommand(.pineGoBack)
                 }
                 .keyboardShortcut("[", modifiers: .command)
 
                 Button("Forward") {
-                    NotificationCenter.default.post(name: .pineGoForward, object: nil)
+                    postWindowCommand(.pineGoForward)
                 }
                 .keyboardShortcut("]", modifiers: .command)
             }
 
             CommandMenu("History") {
                 Button("Show History") {
-                    NotificationCenter.default.post(name: .pineShowHistory, object: nil)
+                    postWindowCommand(.pineShowHistory)
                 }
                 .keyboardShortcut("y", modifiers: .command)
             }
 
             CommandMenu("Bookmarks") {
                 Button("Show Bookmarks") {
-                    NotificationCenter.default.post(name: .pineShowBookmarks, object: nil)
+                    postWindowCommand(.pineShowBookmarks)
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
             }
 
             CommandMenu("Tabs") {
                 Button("Tabs Overview") {
-                    NotificationCenter.default.post(name: .pineShowTabSearch, object: nil)
+                    postWindowCommand(.pineShowTabSearch)
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
 
                 Button("Reopen Closed Tab") {
-                    NotificationCenter.default.post(name: .pineReopenClosedTab, object: nil)
+                    postWindowCommand(.pineReopenClosedTab)
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
 
                 Button("Previous Tab") {
-                    NotificationCenter.default.post(name: .pineCycleTabsBackward, object: nil)
+                    postWindowCommand(.pineCycleTabsBackward)
                 }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
 
                 Button("Next Tab") {
-                    NotificationCenter.default.post(name: .pineCycleTabsForward, object: nil)
+                    postWindowCommand(.pineCycleTabsForward)
                 }
                 .keyboardShortcut("]", modifiers: [.command, .shift])
 
@@ -87,11 +98,7 @@ struct pineApp: App {
 
                 ForEach(1...9, id: \.self) { index in
                     Button("Select Tab \(index)") {
-                        NotificationCenter.default.post(
-                            name: .pineSelectTabAtIndex,
-                            object: nil,
-                            userInfo: ["index": index]
-                        )
+                        postWindowCommand(.pineSelectTabAtIndex, userInfo: ["index": index])
                     }
                     .keyboardShortcut(KeyEquivalent(Character("\(index)")), modifiers: .command)
                 }
@@ -99,72 +106,85 @@ struct pineApp: App {
 
             CommandMenu("Reading") {
                 Button("Zoom In") {
-                    NotificationCenter.default.post(name: .pineZoomIn, object: nil)
+                    postWindowCommand(.pineZoomIn)
                 }
                 .keyboardShortcut("=", modifiers: .command)
 
                 Button("Zoom Out") {
-                    NotificationCenter.default.post(name: .pineZoomOut, object: nil)
+                    postWindowCommand(.pineZoomOut)
                 }
                 .keyboardShortcut("-", modifiers: .command)
 
                 Button("Actual Size") {
-                    NotificationCenter.default.post(name: .pineZoomReset, object: nil)
+                    postWindowCommand(.pineZoomReset)
                 }
                 .keyboardShortcut("0", modifiers: .command)
 
                 Divider()
 
                 Button("Toggle Reader Mode (Lite)") {
-                    NotificationCenter.default.post(name: .pineToggleReaderMode, object: nil)
+                    postWindowCommand(.pineToggleReaderMode)
                 }
             }
 
             CommandMenu("Page") {
                 Button("View Source") {
-                    NotificationCenter.default.post(name: .pineViewSource, object: nil)
+                    postWindowCommand(.pineViewSource)
                 }
                 .keyboardShortcut("u", modifiers: [.command, .option])
 
                 Button("Open Current Page in Safari") {
-                    NotificationCenter.default.post(name: .pineOpenCurrentPageInSafari, object: nil)
+                    postWindowCommand(.pineOpenCurrentPageInSafari)
                 }
                 .keyboardShortcut("o", modifiers: [.command, .option])
 
                 Button("Copy Clean Link") {
-                    NotificationCenter.default.post(name: .pineCopyCleanLink, object: nil)
+                    postWindowCommand(.pineCopyCleanLink)
                 }
                 .keyboardShortcut("c", modifiers: [.command, .option, .shift])
             }
 
             CommandMenu("View") {
                 Button("Toggle Split View") {
-                    NotificationCenter.default.post(name: .pineToggleSplitView, object: nil)
+                    postWindowCommand(.pineToggleSplitView)
                 }
                 .keyboardShortcut("\\", modifiers: .command)
 
                 Button("Focus Left Pane") {
-                    NotificationCenter.default.post(name: .pineSwitchActivePaneLeft, object: nil)
+                    postWindowCommand(.pineSwitchActivePaneLeft)
                 }
                 .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
 
                 Button("Focus Right Pane") {
-                    NotificationCenter.default.post(name: .pineSwitchActivePaneRight, object: nil)
+                    postWindowCommand(.pineSwitchActivePaneRight)
                 }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
 
                 Button("Swap Split Panes") {
-                    NotificationCenter.default.post(name: .pineSwapSplitPanes, object: nil)
+                    postWindowCommand(.pineSwapSplitPanes)
                 }
                 .keyboardShortcut("\\", modifiers: [.command, .shift])
 
                 Button("Reset Split Divider") {
-                    NotificationCenter.default.post(name: .pineResetSplitDivider, object: nil)
+                    postWindowCommand(.pineResetSplitDivider)
                 }
 
                 Button("Flip Split Orientation") {}
                     .disabled(true)
             }
         }
+    }
+
+    private func postWindowCommand(_ name: Notification.Name, userInfo: [String: Any] = [:]) {
+        guard let windowNumber = NSApp.keyWindow?.windowNumber ?? NSApp.mainWindow?.windowNumber else { return }
+        var payload = userInfo
+        payload[AppCommandUserInfoKey.windowNumber] = windowNumber
+        NotificationCenter.default.post(name: name, object: nil, userInfo: payload)
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 }
