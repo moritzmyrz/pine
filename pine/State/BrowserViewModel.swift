@@ -9,6 +9,7 @@ final class BrowserViewModel: ObservableObject {
     let navigationController: NavigationController
     let sessionManager: SessionManager
     let profileManager: ProfileManager
+    let workspaceController: WorkspaceController
     let downloadController: DownloadController
     let permissionController: PermissionController
 
@@ -17,6 +18,7 @@ final class BrowserViewModel: ObservableObject {
     let downloadManager: DownloadManager
     let sessionStore: SessionStore
     let profileStore: ProfileStore
+    let workspaceStore: WorkspaceStore
     let sitePermissionsStore: SitePermissionsStore
     let contentBlockerService: ContentBlockerService
 
@@ -26,6 +28,8 @@ final class BrowserViewModel: ObservableObject {
     var selectedTabID: UUID? { store.selectedTabID }
     var profiles: [Profile] { store.profiles }
     var currentProfileID: UUID { store.currentProfileID }
+    var workspaces: [Workspace] { store.workspaces }
+    var currentWorkspaceID: UUID? { store.currentWorkspaceID }
     var sessionSettings: BrowserSettings { store.sessionSettings }
     var permissionDefaults: PermissionDefaults { store.permissionDefaults }
     var trackerBlockingMode: TrackerBlockingMode { store.trackerBlockingMode }
@@ -41,6 +45,7 @@ final class BrowserViewModel: ObservableObject {
         downloadManager: DownloadManager = DownloadManager(),
         sessionStore: SessionStore = SessionStore(),
         profileStore: ProfileStore = ProfileStore(),
+        workspaceStore: WorkspaceStore = WorkspaceStore(),
         sitePermissionsStore: SitePermissionsStore = SitePermissionsStore(),
         contentBlockerService: ContentBlockerService = ContentBlockerService()
     ) {
@@ -49,6 +54,7 @@ final class BrowserViewModel: ObservableObject {
         self.downloadManager = downloadManager
         self.sessionStore = sessionStore
         self.profileStore = profileStore
+        self.workspaceStore = workspaceStore
         self.sitePermissionsStore = sitePermissionsStore
         self.contentBlockerService = contentBlockerService
 
@@ -78,6 +84,14 @@ final class BrowserViewModel: ObservableObject {
             tabManager: tabManager
         )
         self.profileManager = profileManager
+
+        let workspaceController = WorkspaceController(
+            store: store,
+            workspaceStore: workspaceStore,
+            tabManager: tabManager,
+            sessionStore: sessionStore
+        )
+        self.workspaceController = workspaceController
 
         let navigationController = NavigationController(
             store: store,
@@ -149,6 +163,17 @@ final class BrowserViewModel: ObservableObject {
     func setRestorePreviousSessionEnabled(_ enabled: Bool) { sessionManager.setRestorePreviousSessionEnabled(enabled) }
     func setIncludePrivateTabsInSession(_ enabled: Bool) { sessionManager.setIncludePrivateTabsInSession(enabled) }
     func setShowCompactTabStrip(_ enabled: Bool) { sessionManager.setShowCompactTabStrip(enabled) }
+    var hasSavableTabsForWorkspace: Bool { workspaceController.hasSavableTabs }
+    @discardableResult
+    func createWorkspaceFromCurrentTabs(named name: String?) -> UUID? {
+        workspaceController.createWorkspaceFromCurrentTabs(named: name)
+    }
+    func switchToWorkspace(id: UUID) {
+        workspaceController.switchToWorkspace(id: id)
+        sessionManager.persistSession()
+    }
+    func renameWorkspace(id: UUID, to newName: String) { workspaceController.renameWorkspace(id: id, to: newName) }
+    func deleteWorkspace(id: UUID) { workspaceController.deleteWorkspace(id: id) }
     func selectProfile(id: UUID) { profileManager.selectProfile(id: id) }
     @discardableResult func createProfile(named name: String?) -> UUID { profileManager.createProfile(named: name) }
     func renameProfile(id: UUID, to newName: String) { profileManager.renameProfile(id: id, to: newName) }
@@ -251,6 +276,7 @@ final class BrowserViewModel: ObservableObject {
         sessionManager.applyInitialSettings()
         permissionController.loadInitialState()
         profileManager.loadProfiles()
+        workspaceController.loadWorkspaces()
 
         let defaultProfileID = store.profiles.first(where: \.isDefault)?.id ?? store.profiles[0].id
         let savedProfileID = store.sessionSettings.currentProfileID

@@ -7,6 +7,8 @@ final class BrowserStore: ObservableObject {
 
     @Published var profiles: [Profile] = []
     @Published var currentProfileID: UUID = UUID()
+    @Published var workspaces: [Workspace] = []
+    @Published var currentWorkspaceID: UUID?
 
     @Published var sessionSettings: BrowserSettings = .default
     @Published var permissionDefaults: PermissionDefaults = .default

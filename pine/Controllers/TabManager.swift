@@ -193,6 +193,29 @@ final class TabManager {
         store.normalizePinnedOrdering()
     }
 
+    func replaceAllTabs(with newTabs: [Tab], selectedTabID: UUID?) {
+        for tab in store.tabs {
+            onTabRemoved?(tab.id)
+        }
+        store.tabs = newTabs
+        store.normalizePinnedOrdering()
+
+        if store.tabs.isEmpty {
+            _ = newBlankTab(shouldSelect: true, isPrivate: false)
+            return
+        }
+
+        if let selectedTabID, store.tabs.contains(where: { $0.id == selectedTabID }) {
+            store.setSelectedTabID(selectedTabID)
+        } else {
+            store.setSelectedTabID(store.tabs.first?.id)
+        }
+
+        for tab in store.tabs {
+            onTabLoaded?(tab.id, tab.urlString)
+        }
+    }
+
     private func pushClosedTabState(for tab: Tab) {
         let title = tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayTitle = title.isEmpty ? "New Tab" : title

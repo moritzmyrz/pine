@@ -47,17 +47,7 @@ struct BrowserRootView: View {
                 )
             }
             .sheet(isPresented: tabsOverviewSheetBinding) {
-                TabsOverviewSheetView(
-                    tabs: viewModel.sortedTabs,
-                    selectedTabID: viewModel.selectedTabID,
-                    onSelectTab: { tabID in
-                        viewModel.selectTab(id: tabID)
-                        isTabsOverviewPresented = false
-                    },
-                    onCloseTab: { tabID in
-                        viewModel.closeTab(id: tabID)
-                    }
-                )
+                TabsOverviewSheetView(viewModel: viewModel)
             }
             .alert("Delete Profile?", isPresented: profileDeleteConfirmationBinding, presenting: viewModel.store.profilePendingDeletion) { profile in
                 Button("Delete", role: .destructive) {
