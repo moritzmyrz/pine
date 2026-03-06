@@ -23,7 +23,7 @@ struct pineApp: App {
                 Button("New Private Tab") {
                     NotificationCenter.default.post(name: .pineNewPrivateTab, object: nil)
                 }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
+                .keyboardShortcut("n", modifiers: [.command, .shift])
 
                 Button("Close Tab") {
                     NotificationCenter.default.post(name: .pineCloseTab, object: nil)
@@ -67,6 +67,11 @@ struct pineApp: App {
                     NotificationCenter.default.post(name: .pineShowTabSearch, object: nil)
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
+
+                Button("Reopen Closed Tab") {
+                    NotificationCenter.default.post(name: .pineReopenClosedTab, object: nil)
+                }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
 
                 Button("Previous Tab") {
                     NotificationCenter.default.post(name: .pineCycleTabsBackward, object: nil)

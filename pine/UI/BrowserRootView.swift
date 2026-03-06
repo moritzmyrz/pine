@@ -13,6 +13,47 @@ struct BrowserRootView: View {
     @FocusState private var isTabSearchFieldFocused: Bool
 
     var body: some View {
+        configuredRootView
+    }
+
+    private var configuredRootView: some View {
+        rootLayout
+            .animation(.easeInOut(duration: 0.15), value: isTabSearchPresented)
+            .sheet(isPresented: $isHistoryPresented) {
+                HistorySheetView(
+                    historyStore: viewModel.historyStore,
+                    onSelect: { entry in
+                        viewModel.loadHistoryEntryInSelectedTab(entry)
+                        isHistoryPresented = false
+                    }
+                )
+            }
+            .sheet(isPresented: $isBookmarksPresented) {
+                BookmarksSheetView(
+                    bookmarksStore: viewModel.bookmarksStore,
+                    onSelect: { bookmark in
+                        viewModel.loadBookmarkInSelectedTab(bookmark)
+                        isBookmarksPresented = false
+                    }
+                )
+            }
+            .sheet(isPresented: $isDownloadsPresented) {
+                DownloadsSheetView(downloadManager: viewModel.downloadManager)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .pineShowHistory)) { _ in
+                isHistoryPresented = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .pineShowBookmarks)) { _ in
+                isBookmarksPresented = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .pineShowTabSearch)) { _ in
+                tabSearchQuery = ""
+                isTabSearchPresented = true
+                isTabSearchFieldFocused = true
+            }
+    }
+
+    private var rootLayout: some View {
         ZStack {
             VStack(spacing: 0) {
                 AddressBarView(viewModel: viewModel)
@@ -69,21 +110,8 @@ struct BrowserRootView: View {
                         isDownloadsPresented = true
                     }
 
-                    Menu("Reading") {
-                        Button("Zoom In") {
-                            viewModel.zoomInSelectedTab()
-                        }
-                        Button("Zoom Out") {
-                            viewModel.zoomOutSelectedTab()
-                        }
-                        Button("Actual Size") {
-                            viewModel.resetZoomSelectedTab()
-                        }
-                        Divider()
-                        Button(readerModeButtonTitle) {
-                            viewModel.toggleReaderModeForSelectedTab()
-                        }
-                    }
+                    readingToolbarMenu
+                    sessionToolbarMenu
                 }
             }
             .background {
@@ -99,79 +127,6 @@ struct BrowserRootView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
                     .zIndex(10)
             }
-        }
-        .animation(.easeInOut(duration: 0.15), value: isTabSearchPresented)
-        .sheet(isPresented: $isHistoryPresented) {
-            HistorySheetView(
-                historyStore: viewModel.historyStore,
-                onSelect: { entry in
-                    viewModel.loadHistoryEntryInSelectedTab(entry)
-                    isHistoryPresented = false
-                }
-            )
-        }
-        .sheet(isPresented: $isBookmarksPresented) {
-            BookmarksSheetView(
-                bookmarksStore: viewModel.bookmarksStore,
-                onSelect: { bookmark in
-                    viewModel.loadBookmarkInSelectedTab(bookmark)
-                    isBookmarksPresented = false
-                }
-            )
-        }
-        .sheet(isPresented: $isDownloadsPresented) {
-            DownloadsSheetView(downloadManager: viewModel.downloadManager)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineNewTab)) { _ in
-            viewModel.newTab(focusAddressBar: true)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineNewPrivateTab)) { _ in
-            viewModel.newPrivateTab(focusAddressBar: true)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineCloseTab)) { _ in
-            viewModel.closeCurrentTab()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineReload)) { _ in
-            viewModel.reloadSelectedTab()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineGoBack)) { _ in
-            viewModel.goBackSelectedTab()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineGoForward)) { _ in
-            viewModel.goForwardSelectedTab()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineShowHistory)) { _ in
-            isHistoryPresented = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineShowBookmarks)) { _ in
-            isBookmarksPresented = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineShowTabSearch)) { _ in
-            tabSearchQuery = ""
-            isTabSearchPresented = true
-            isTabSearchFieldFocused = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineCycleTabsBackward)) { _ in
-            viewModel.cycleTab(forward: false)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineCycleTabsForward)) { _ in
-            viewModel.cycleTab(forward: true)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineSelectTabAtIndex)) { notification in
-            guard let index = notification.userInfo?["index"] as? Int else { return }
-            viewModel.selectTab(atOneBasedIndex: index)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineZoomIn)) { _ in
-            viewModel.zoomInSelectedTab()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineZoomOut)) { _ in
-            viewModel.zoomOutSelectedTab()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineZoomReset)) { _ in
-            viewModel.resetZoomSelectedTab()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pineToggleReaderMode)) { _ in
-            viewModel.toggleReaderModeForSelectedTab()
         }
     }
 
@@ -399,6 +354,54 @@ struct BrowserRootView: View {
 
     private var readerModeButtonTitle: String {
         (viewModel.selectedTab?.isReaderModeEnabled == true) ? "Disable Reader Mode (Lite)" : "Enable Reader Mode (Lite)"
+    }
+
+    private var readingToolbarMenu: some View {
+        Menu("Reading") {
+            Button("Zoom In") {
+                viewModel.zoomInSelectedTab()
+            }
+            Button("Zoom Out") {
+                viewModel.zoomOutSelectedTab()
+            }
+            Button("Actual Size") {
+                viewModel.resetZoomSelectedTab()
+            }
+            Divider()
+            Button(readerModeButtonTitle) {
+                viewModel.toggleReaderModeForSelectedTab()
+            }
+        }
+    }
+
+    private var sessionToolbarMenu: some View {
+        Menu("Session") {
+            Button("Reopen Closed Tab") {
+                viewModel.reopenClosedTab()
+            }
+
+            Divider()
+
+            Button(restoreSessionMenuTitle) {
+                viewModel.setRestorePreviousSessionEnabled(!viewModel.sessionSettings.restorePreviousSession)
+            }
+
+            Button(includePrivateTabsMenuTitle) {
+                viewModel.setIncludePrivateTabsInSession(!viewModel.sessionSettings.includePrivateTabsInSession)
+            }
+        }
+    }
+
+    private var restoreSessionMenuTitle: String {
+        viewModel.sessionSettings.restorePreviousSession
+            ? "Disable Restore Previous Session"
+            : "Enable Restore Previous Session"
+    }
+
+    private var includePrivateTabsMenuTitle: String {
+        viewModel.sessionSettings.includePrivateTabsInSession
+            ? "Disable Private Tabs in Session"
+            : "Enable Private Tabs in Session"
     }
 }
 

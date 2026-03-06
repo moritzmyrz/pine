@@ -13,6 +13,7 @@ extension Notification.Name {
     static let pineCycleTabsBackward = Notification.Name("pine.cycleTabsBackward")
     static let pineCycleTabsForward = Notification.Name("pine.cycleTabsForward")
     static let pineSelectTabAtIndex = Notification.Name("pine.selectTabAtIndex")
+    static let pineReopenClosedTab = Notification.Name("pine.reopenClosedTab")
     static let pineZoomIn = Notification.Name("pine.zoomIn")
     static let pineZoomOut = Notification.Name("pine.zoomOut")
     static let pineZoomReset = Notification.Name("pine.zoomReset")

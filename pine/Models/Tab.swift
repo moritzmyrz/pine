@@ -8,6 +8,7 @@ struct Tab: Identifiable {
     var isPinned: Bool
     var zoomFactor: Double
     var isReaderModeEnabled: Bool
+    var lastSelectedAt: Date?
     var faviconData: Data?
     var isLoading: Bool
     var estimatedProgress: Double
@@ -22,6 +23,7 @@ struct Tab: Identifiable {
         isPinned: Bool = false,
         zoomFactor: Double = 1.0,
         isReaderModeEnabled: Bool = false,
+        lastSelectedAt: Date? = nil,
         faviconData: Data? = nil,
         isLoading: Bool = false,
         estimatedProgress: Double = 0,
@@ -35,6 +37,7 @@ struct Tab: Identifiable {
         self.isPinned = isPinned
         self.zoomFactor = zoomFactor
         self.isReaderModeEnabled = isReaderModeEnabled
+        self.lastSelectedAt = lastSelectedAt
         self.faviconData = faviconData
         self.isLoading = isLoading
         self.estimatedProgress = estimatedProgress

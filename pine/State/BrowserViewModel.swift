@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import WebKit
@@ -5,11 +6,13 @@ import WebKit
 final class BrowserViewModel: ObservableObject {
     @Published var tabs: [Tab]
     @Published var selectedTabID: UUID?
+    @Published var sessionSettings: BrowserSettings
     @Published var addressBarFocusToken = UUID()
     @Published private(set) var shouldSelectAllInAddressBar = false
     let historyStore: HistoryStore
     let bookmarksStore: BookmarksStore
     let downloadManager: DownloadManager
+    let sessionStore: SessionStore
 
     // Keep WKWebView instances in the view model so Tab stays plain state data.
     // This works well with SwiftUI value-driven updates on macOS.
@@ -17,7 +20,15 @@ final class BrowserViewModel: ObservableObject {
     private var webViewObservers: [UUID: WebViewObservers] = [:]
     private var faviconCacheByHost: [String: Data] = [:]
     private var faviconTasks: [UUID: URLSessionDataTask] = [:]
+    private var closedTabsStack: [ClosedTabState] = []
     private var cancellables: Set<AnyCancellable> = []
+
+    private struct ClosedTabState {
+        let urlString: String
+        let title: String
+        let isPrivate: Bool
+        let isPinned: Bool
+    }
 
     private struct WebViewObservers {
         let titleObserver: NSKeyValueObservation
@@ -49,19 +60,147 @@ final class BrowserViewModel: ObservableObject {
     init(
         historyStore: HistoryStore = HistoryStore(),
         bookmarksStore: BookmarksStore = BookmarksStore(),
-        downloadManager: DownloadManager = DownloadManager()
+        downloadManager: DownloadManager = DownloadManager(),
+        sessionStore: SessionStore = SessionStore()
     ) {
         self.historyStore = historyStore
         self.bookmarksStore = bookmarksStore
         self.downloadManager = downloadManager
-        let firstTab = Tab(urlString: "https://example.com")
-        tabs = [firstTab]
-        selectedTabID = firstTab.id
-        load(urlInput: firstTab.urlString, in: firstTab.id)
+        self.sessionStore = sessionStore
+        tabs = []
+        selectedTabID = nil
+        sessionSettings = sessionStore.loadSettings()
+
+        if sessionSettings.restorePreviousSession,
+           let savedSession = sessionStore.loadSession(),
+           !savedSession.tabs.isEmpty {
+            tabs = savedSession.tabs.map { persisted in
+                Tab(
+                    id: persisted.id,
+                    urlString: persisted.urlString,
+                    title: persisted.title ?? "New Tab",
+                    isPrivate: persisted.isPrivate,
+                    isPinned: persisted.isPinned,
+                    lastSelectedAt: persisted.lastSelectedAt
+                )
+            }
+            normalizePinnedOrdering()
+            if let selectedID = savedSession.selectedTabID, tabs.contains(where: { $0.id == selectedID }) {
+                setSelectedTabID(selectedID)
+            } else {
+                setSelectedTabID(tabs.first?.id)
+            }
+            for tab in tabs {
+                load(urlInput: tab.urlString, in: tab.id)
+            }
+        } else {
+            let firstTab = Tab(urlString: "https://example.com", lastSelectedAt: Date())
+            tabs = [firstTab]
+            setSelectedTabID(firstTab.id)
+            load(urlInput: firstTab.urlString, in: firstTab.id)
+        }
 
         bookmarksStore.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineNewTab)
+            .sink { [weak self] _ in
+                self?.newTab(focusAddressBar: true)
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineNewPrivateTab)
+            .sink { [weak self] _ in
+                self?.newPrivateTab(focusAddressBar: true)
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineCloseTab)
+            .sink { [weak self] _ in
+                self?.closeCurrentTab()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineReload)
+            .sink { [weak self] _ in
+                self?.reloadSelectedTab()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineGoBack)
+            .sink { [weak self] _ in
+                self?.goBackSelectedTab()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineGoForward)
+            .sink { [weak self] _ in
+                self?.goForwardSelectedTab()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineCycleTabsBackward)
+            .sink { [weak self] _ in
+                self?.cycleTab(forward: false)
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineCycleTabsForward)
+            .sink { [weak self] _ in
+                self?.cycleTab(forward: true)
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineSelectTabAtIndex)
+            .sink { [weak self] notification in
+                guard let index = notification.userInfo?["index"] as? Int else { return }
+                self?.selectTab(atOneBasedIndex: index)
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineReopenClosedTab)
+            .sink { [weak self] _ in
+                self?.reopenClosedTab()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineZoomIn)
+            .sink { [weak self] _ in
+                self?.zoomInSelectedTab()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineZoomOut)
+            .sink { [weak self] _ in
+                self?.zoomOutSelectedTab()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineZoomReset)
+            .sink { [weak self] _ in
+                self?.resetZoomSelectedTab()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineToggleReaderMode)
+            .sink { [weak self] _ in
+                self?.toggleReaderModeForSelectedTab()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
+            .sink { [weak self] _ in
+                self?.persistSession()
+            }
+            .store(in: &cancellables)
+
+        Timer.publish(every: 20, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                self?.persistSession()
             }
             .store(in: &cancellables)
     }
@@ -87,7 +226,7 @@ final class BrowserViewModel: ObservableObject {
         tabs.append(tab)
         normalizePinnedOrdering()
         if shouldSelect {
-            selectedTabID = tab.id
+            setSelectedTabID(tab.id)
         }
 
         if shouldLoad {
@@ -114,6 +253,8 @@ final class BrowserViewModel: ObservableObject {
     func closeTab(id: UUID) {
         guard let closedIndex = tabs.firstIndex(where: { $0.id == id }) else { return }
         let wasSelected = (selectedTabID == id)
+        let closedTab = tabs[closedIndex]
+        pushClosedTabState(for: closedTab)
 
         tabs.removeAll { $0.id == id }
         webViews[id] = nil
@@ -129,7 +270,7 @@ final class BrowserViewModel: ObservableObject {
 
         if wasSelected {
             let nextIndex = min(closedIndex, tabs.count - 1)
-            selectedTabID = tabs[nextIndex].id
+            setSelectedTabID(tabs[nextIndex].id)
             return
         }
 
@@ -138,7 +279,7 @@ final class BrowserViewModel: ObservableObject {
         }
 
         if let firstTab = tabs.first {
-            selectedTabID = firstTab.id
+            setSelectedTabID(firstTab.id)
         }
     }
 
@@ -157,16 +298,20 @@ final class BrowserViewModel: ObservableObject {
 
         tabs.insert(duplicate, at: min(sourceIndex + 1, tabs.count))
         normalizePinnedOrdering()
-        selectedTabID = duplicate.id
+        setSelectedTabID(duplicate.id)
         load(urlInput: sourceTab.urlString, in: duplicate.id)
     }
 
     func closeOtherTabs(keeping id: UUID) {
         guard tabs.contains(where: { $0.id == id }) else { return }
 
+        let removedTabs = tabs.filter { $0.id != id }
+        for tab in removedTabs {
+            pushClosedTabState(for: tab)
+        }
         let removedIDs = tabs.filter { $0.id != id }.map(\.id)
         tabs.removeAll { $0.id != id }
-        selectedTabID = id
+        setSelectedTabID(id)
 
         for removedID in removedIDs {
             webViews[removedID] = nil
@@ -180,6 +325,10 @@ final class BrowserViewModel: ObservableObject {
     func closeTabsToRight(of id: UUID) {
         guard let tabIndex = tabs.firstIndex(where: { $0.id == id }) else { return }
         guard tabIndex < tabs.count - 1 else { return }
+        let removedTabs = Array(tabs[(tabIndex + 1)...])
+        for tab in removedTabs {
+            pushClosedTabState(for: tab)
+        }
         let idsToRemove = tabs[(tabIndex + 1)...].map(\.id)
 
         tabs.removeAll { idsToRemove.contains($0.id) }
@@ -193,7 +342,7 @@ final class BrowserViewModel: ObservableObject {
         }
 
         if let currentSelectedTabID = selectedTabID, !tabs.contains(where: { $0.id == currentSelectedTabID }) {
-            selectedTabID = id
+            setSelectedTabID(id)
         }
     }
 
@@ -217,7 +366,7 @@ final class BrowserViewModel: ObservableObject {
     func selectTab(atOneBasedIndex index: Int) {
         guard index >= 1 else { return }
         guard index <= tabs.count else { return }
-        selectedTabID = tabs[index - 1].id
+        setSelectedTabID(tabs[index - 1].id)
     }
 
     func cycleTab(forward: Bool) {
@@ -231,7 +380,7 @@ final class BrowserViewModel: ObservableObject {
         } else {
             nextIndex = (currentIndex - 1 + tabs.count) % tabs.count
         }
-        self.selectedTabID = tabs[nextIndex].id
+        setSelectedTabID(tabs[nextIndex].id)
     }
 
     func tabsMatching(query: String) -> [Tab] {
@@ -249,9 +398,42 @@ final class BrowserViewModel: ObservableObject {
         closeTab(id: selectedTabID)
     }
 
+    func reopenClosedTab() {
+        guard let closed = closedTabsStack.popLast() else { return }
+        let reopenedID = newTab(
+            urlString: closed.urlString,
+            shouldSelect: true,
+            shouldLoad: true,
+            isPrivate: closed.isPrivate
+        )
+
+        if let index = tabs.firstIndex(where: { $0.id == reopenedID }) {
+            tabs[index].title = closed.title
+            tabs[index].isPinned = closed.isPinned
+            tabs[index].lastSelectedAt = Date()
+        }
+        normalizePinnedOrdering()
+    }
+
+    func setRestorePreviousSessionEnabled(_ enabled: Bool) {
+        sessionSettings.restorePreviousSession = enabled
+        sessionStore.saveSettings(sessionSettings)
+        if enabled {
+            persistSession()
+        } else {
+            sessionStore.clearSession()
+        }
+    }
+
+    func setIncludePrivateTabsInSession(_ enabled: Bool) {
+        sessionSettings.includePrivateTabsInSession = enabled
+        sessionStore.saveSettings(sessionSettings)
+        persistSession()
+    }
+
     func selectTab(id: UUID) {
         guard tabs.contains(where: { $0.id == id }) else { return }
-        selectedTabID = id
+        setSelectedTabID(id)
         if let webView = webViews[id] {
             applyStoredPageSettings(for: id, in: webView)
         }
@@ -672,6 +854,52 @@ final class BrowserViewModel: ObservableObject {
 
     private func host(from urlString: String) -> String? {
         URL(string: urlString)?.host?.lowercased()
+    }
+
+    private func persistSession() {
+        guard sessionSettings.restorePreviousSession else { return }
+        let now = Date()
+        let persistedTabs = tabs.map { tab in
+            let shouldPersistPrivateURL = sessionSettings.includePrivateTabsInSession || !tab.isPrivate
+            let persistedURL = shouldPersistPrivateURL ? tab.urlString : "about:blank"
+            let persistedTitle = shouldPersistPrivateURL ? tab.title : nil
+            let selectedAt = (tab.id == selectedTabID) ? now : tab.lastSelectedAt
+
+            return PersistedTab(
+                id: tab.id,
+                urlString: persistedURL,
+                title: persistedTitle,
+                isPinned: tab.isPinned,
+                isPrivate: tab.isPrivate,
+                lastSelectedAt: selectedAt
+            )
+        }
+
+        let snapshot = BrowserSessionSnapshot(
+            tabs: persistedTabs,
+            selectedTabID: selectedTabID,
+            savedAt: now
+        )
+        sessionStore.saveSession(snapshot)
+    }
+
+    private func pushClosedTabState(for tab: Tab) {
+        let title = tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayTitle = title.isEmpty ? "New Tab" : title
+        closedTabsStack.append(
+            ClosedTabState(
+                urlString: tab.urlString,
+                title: displayTitle,
+                isPrivate: tab.isPrivate,
+                isPinned: tab.isPinned
+            )
+        )
+    }
+
+    private func setSelectedTabID(_ id: UUID?) {
+        selectedTabID = id
+        guard let id, let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        tabs[index].lastSelectedAt = Date()
     }
 
     private func setReaderMode(in webView: WKWebView, enabled: Bool) {
