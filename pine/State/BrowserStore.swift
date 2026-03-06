@@ -39,6 +39,7 @@ final class BrowserStore: ObservableObject {
     @Published var isDownloadsPresented = false
     @Published var isSettingsPresented = false
     @Published var isProfileManagementPresented = false
+    @Published var isCommandPalettePresented = false
     @Published var isTabSearchPresented = false
     @Published var tabSearchQuery = ""
 

@@ -185,6 +185,30 @@ final class BrowserViewModel: ObservableObject {
         commandRegistry.search(query: query)
     }
 
+    func executePaletteItem(_ item: PaletteItem, openInNewTab: Bool = false) {
+        switch item.payload {
+        case let .command(command):
+            command.action()
+        case let .tab(payload):
+            selectTab(id: payload.tabID)
+            focusWebView(for: payload.tabID)
+        case let .history(payload):
+            if openInNewTab {
+                _ = newTab(urlString: payload.urlString, shouldSelect: true, shouldLoad: true)
+                return
+            }
+            loadSelectedTab(from: payload.urlString)
+            focusWebViewForActiveTab()
+        case let .bookmark(payload):
+            if openInNewTab {
+                _ = newTab(urlString: payload.urlString, shouldSelect: true, shouldLoad: true)
+                return
+            }
+            loadSelectedTab(from: payload.urlString)
+            focusWebViewForActiveTab()
+        }
+    }
+
     func profileName(for profileID: UUID) -> String { profileManager.profileName(for: profileID) }
     func setRestorePreviousSessionEnabled(_ enabled: Bool) { sessionManager.setRestorePreviousSessionEnabled(enabled) }
     func setIncludePrivateTabsInSession(_ enabled: Bool) { sessionManager.setIncludePrivateTabsInSession(enabled) }
@@ -522,5 +546,15 @@ final class BrowserViewModel: ObservableObject {
 
     private func activeTabURLString(for tabID: UUID) -> String {
         store.tabs.first(where: { $0.id == tabID })?.urlString ?? ""
+    }
+
+    private func focusWebViewForActiveTab() {
+        guard let tabID = activeNavigationTabID else { return }
+        focusWebView(for: tabID)
+    }
+
+    private func focusWebView(for tabID: UUID) {
+        let webView = navigationController.webView(for: tabID)
+        NSApp.keyWindow?.makeFirstResponder(webView)
     }
 }
