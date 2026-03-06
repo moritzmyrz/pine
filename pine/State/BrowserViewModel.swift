@@ -12,6 +12,7 @@ final class BrowserViewModel: ObservableObject {
     let workspaceController: WorkspaceController
     let downloadController: DownloadController
     let permissionController: PermissionController
+    let commandRegistry: CommandRegistry
 
     let historyStore: HistoryStore
     let bookmarksStore: BookmarksStore
@@ -113,7 +114,10 @@ final class BrowserViewModel: ObservableObject {
             downloadController: downloadController
         )
         self.navigationController = navigationController
+        let commandRegistry = CommandRegistry()
+        self.commandRegistry = commandRegistry
 
+        registerDefaultPaletteCommands()
         bind()
         loadInitialState()
     }
@@ -177,6 +181,10 @@ final class BrowserViewModel: ObservableObject {
         }
     }
 
+    func searchPaletteCommands(query: String) -> [PaletteItem] {
+        commandRegistry.search(query: query)
+    }
+
     func profileName(for profileID: UUID) -> String { profileManager.profileName(for: profileID) }
     func setRestorePreviousSessionEnabled(_ enabled: Bool) { sessionManager.setRestorePreviousSessionEnabled(enabled) }
     func setIncludePrivateTabsInSession(_ enabled: Bool) { sessionManager.setIncludePrivateTabsInSession(enabled) }
@@ -216,6 +224,10 @@ final class BrowserViewModel: ObservableObject {
     func viewSourceForSelectedTab() { navigationController.viewSourceForSelectedTab() }
     func openSelectedPageInSafari() { navigationController.openSelectedPageInSafari() }
     func copyCleanLinkForSelectedTab() { navigationController.copyCleanLinkForSelectedTab() }
+    func showDownloads() { downloadController.showDownloadsSheet() }
+    func showHistory() { store.isHistoryPresented = true }
+    func showBookmarks() { store.isBookmarksPresented = true }
+    func showSettings() { store.isSettingsPresented = true }
 
     func shouldAllowPermissionRequest(type: SitePermissionType, host: String?, completion: @escaping (Bool) -> Void) {
         permissionController.shouldAllowPermissionRequest(type: type, host: host, completion: completion)
@@ -306,6 +318,80 @@ final class BrowserViewModel: ObservableObject {
                 self?.navigationController.applyContentBlockingToAllWebViews()
             }
         }
+    }
+
+    private func registerDefaultPaletteCommands() {
+        commandRegistry.setCommands([
+            Command(
+                id: "new-tab",
+                title: "New Tab",
+                subtitle: "Open a new tab",
+                keywords: ["tab", "open", "create"],
+                shortcutHint: "Cmd+T",
+                group: "Commands"
+            ) { [weak self] in
+                self?.newTab(focusAddressBar: true)
+            },
+            Command(
+                id: "new-private-tab",
+                title: "New Private Tab",
+                subtitle: "Open a private browsing tab",
+                keywords: ["private", "incognito", "tab"],
+                shortcutHint: "Cmd+Shift+N",
+                group: "Commands"
+            ) { [weak self] in
+                self?.newPrivateTab(focusAddressBar: true)
+            },
+            Command(
+                id: "toggle-split-view",
+                title: "Toggle Split View",
+                subtitle: "Enable or disable side-by-side tabs",
+                keywords: ["split", "pane", "layout", "view"],
+                shortcutHint: "Cmd+\\",
+                group: "Commands"
+            ) { [weak self] in
+                self?.toggleSplitView()
+            },
+            Command(
+                id: "show-downloads",
+                title: "Show Downloads",
+                subtitle: "Open the downloads sheet",
+                keywords: ["downloads", "files", "transfer"],
+                group: "Commands"
+            ) { [weak self] in
+                self?.showDownloads()
+            },
+            Command(
+                id: "show-history",
+                title: "Show History",
+                subtitle: "Open browsing history",
+                keywords: ["history", "visited", "pages"],
+                shortcutHint: "Cmd+Y",
+                group: "Commands"
+            ) { [weak self] in
+                self?.showHistory()
+            },
+            Command(
+                id: "show-bookmarks",
+                title: "Show Bookmarks",
+                subtitle: "Open saved bookmarks",
+                keywords: ["bookmarks", "saved", "favorites"],
+                shortcutHint: "Cmd+Shift+B",
+                group: "Commands"
+            ) { [weak self] in
+                self?.showBookmarks()
+            },
+            Command(
+                id: "show-settings",
+                title: "Settings",
+                subtitle: "Open app settings",
+                keywords: ["settings", "preferences", "options"],
+                shortcutHint: "Cmd+,",
+                group: "Commands"
+            ) { [weak self] in
+                self?.showSettings()
+            }
+        ])
     }
 
     private func loadInitialState() {
