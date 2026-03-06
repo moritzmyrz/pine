@@ -136,6 +136,13 @@ struct pineApp: App {
                 }
                 .keyboardShortcut("c", modifiers: [.command, .option, .shift])
             }
+
+            CommandMenu("View") {
+                Button("Toggle Split View") {
+                    NotificationCenter.default.post(name: .pineToggleSplitView, object: nil)
+                }
+                .keyboardShortcut("\\", modifiers: .command)
+            }
         }
     }
 }

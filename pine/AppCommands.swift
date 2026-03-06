@@ -18,6 +18,7 @@ extension Notification.Name {
     static let pineZoomOut = Notification.Name("pine.zoomOut")
     static let pineZoomReset = Notification.Name("pine.zoomReset")
     static let pineToggleReaderMode = Notification.Name("pine.toggleReaderMode")
+    static let pineToggleSplitView = Notification.Name("pine.toggleSplitView")
     static let pineViewSource = Notification.Name("pine.viewSource")
     static let pineOpenCurrentPageInSafari = Notification.Name("pine.openCurrentPageInSafari")
     static let pineCopyCleanLink = Notification.Name("pine.copyCleanLink")

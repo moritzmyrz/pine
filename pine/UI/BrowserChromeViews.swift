@@ -227,6 +227,17 @@ struct BrowserTopBar: View {
 
             Divider()
 
+            Button(viewModel.isSplitViewEnabled ? "Disable Split View" : "Enable Split View") {
+                viewModel.toggleSplitView()
+            }
+
+            Button("Swap Split Panes") {
+                viewModel.swapSplitPanes()
+            }
+            .disabled(!viewModel.isSplitViewEnabled)
+
+            Divider()
+
             Button(viewModel.sessionSettings.showCompactTabStrip ? "Hide Tab Strip" : "Show Tab Strip") {
                 viewModel.setShowCompactTabStrip(!viewModel.sessionSettings.showCompactTabStrip)
             }

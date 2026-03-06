@@ -89,23 +89,7 @@ struct BrowserRootView: View {
                     tabStrip
                 }
 
-                if let selectedTab = viewModel.selectedTab {
-                    if selectedTab.urlString == "about:blank" {
-                        blankTabState
-                    } else {
-                        WebViewContainer(viewModel: viewModel, tabID: selectedTab.id)
-                            .id(selectedTab.id)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                } else {
-                    VStack {
-                        Spacer()
-                        Text("No tab selected")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+                browserContentArea
 
                 if viewModel.downloadController.shouldShowShelf {
                     Divider()
@@ -146,6 +130,51 @@ struct BrowserRootView: View {
                 NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
                 viewModel.consumeAddressBarSelectAllRequest()
             }
+        }
+    }
+
+    @ViewBuilder
+    private var browserContentArea: some View {
+        if viewModel.isSplitViewEnabled,
+           let primaryTabID = viewModel.splitPrimaryTabID,
+           let secondaryTabID = viewModel.splitSecondaryTabID,
+           primaryTabID != secondaryTabID,
+           viewModel.tabs.contains(where: { $0.id == primaryTabID }),
+           viewModel.tabs.contains(where: { $0.id == secondaryTabID }) {
+            HStack(spacing: 0) {
+                tabContent(tabID: primaryTabID)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Divider()
+                tabContent(tabID: secondaryTabID)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let selectedTab = viewModel.selectedTab {
+            if selectedTab.urlString == "about:blank" {
+                blankTabState
+            } else {
+                WebViewContainer(viewModel: viewModel, tabID: selectedTab.id)
+                    .id(selectedTab.id)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else {
+            VStack {
+                Spacer()
+                Text("No tab selected")
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func tabContent(tabID: UUID) -> some View {
+        if let tab = viewModel.tabs.first(where: { $0.id == tabID }), tab.urlString == "about:blank" {
+            blankTabState
+        } else {
+            WebViewContainer(viewModel: viewModel, tabID: tabID)
+                .id(tabID)
         }
     }
 

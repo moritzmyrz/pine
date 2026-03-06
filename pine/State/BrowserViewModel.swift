@@ -26,6 +26,9 @@ final class BrowserViewModel: ObservableObject {
 
     var tabs: [Tab] { store.tabs }
     var selectedTabID: UUID? { store.selectedTabID }
+    var isSplitViewEnabled: Bool { store.isSplitViewEnabled }
+    var splitSecondaryTabID: UUID? { store.splitSecondaryTabID }
+    var splitPrimaryTabID: UUID? { store.splitPrimaryTabID }
     var profiles: [Profile] { store.profiles }
     var currentProfileID: UUID { store.currentProfileID }
     var workspaces: [Workspace] { store.workspaces }
@@ -149,6 +152,11 @@ final class BrowserViewModel: ObservableObject {
     func closeCurrentTab() { tabManager.closeCurrentTab() }
     func reopenClosedTab() { tabManager.reopenClosedTab() }
     func selectTab(id: UUID) { tabManager.selectTab(id: id) }
+    func toggleSplitView() { tabManager.toggleSplitView() }
+    func enableSplitView(withSecondaryTabID secondaryTabID: UUID) { tabManager.enableSplitView(withSecondaryTabID: secondaryTabID) }
+    func disableSplitView() { tabManager.disableSplitView() }
+    func setSecondaryTab(id: UUID?) { tabManager.setSecondaryTab(id: id) }
+    func swapSplitPanes() { tabManager.swapSplitPanes() }
 
     func tabsMatching(query: String) -> [Tab] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -362,6 +370,9 @@ final class BrowserViewModel: ObservableObject {
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineCopyCleanLink)
             .sink { [weak self] _ in self?.copyCleanLinkForSelectedTab() }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineToggleSplitView)
+            .sink { [weak self] _ in self?.toggleSplitView() }
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)

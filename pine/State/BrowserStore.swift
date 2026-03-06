@@ -1,9 +1,16 @@
 import Combine
 import Foundation
 
+enum SplitLayout {
+    case vertical
+}
+
 final class BrowserStore: ObservableObject {
     @Published var tabs: [Tab] = []
     @Published var selectedTabID: UUID?
+    @Published var isSplitViewEnabled = false
+    @Published var splitSecondaryTabID: UUID?
+    @Published var splitLayout: SplitLayout = .vertical
 
     @Published var profiles: [Profile] = []
     @Published var currentProfileID: UUID = UUID()
@@ -31,6 +38,10 @@ final class BrowserStore: ObservableObject {
     var selectedTab: Tab? {
         guard let selectedTabID else { return nil }
         return tabs.first(where: { $0.id == selectedTabID })
+    }
+
+    var splitPrimaryTabID: UUID? {
+        selectedTabID
     }
 
     var sortedTabs: [Tab] {
