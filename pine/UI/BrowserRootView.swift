@@ -4,8 +4,8 @@ import SwiftUI
 struct BrowserRootView: View {
     @StateObject private var viewModel: BrowserViewModel
     @StateObject private var commandPaletteViewModel: CommandPaletteViewModel
+    @StateObject private var addressBarViewModel: AddressBarViewModel
     @State private var draggedTabID: UUID?
-    @State private var addressInput = ""
     @State private var isSiteSettingsPresented = false
     @State private var shouldRestoreAddressFocusAfterPalette = false
     @FocusState private var isAddressFieldFocused: Bool
@@ -16,6 +16,7 @@ struct BrowserRootView: View {
         _commandPaletteViewModel = StateObject(
             wrappedValue: CommandPaletteViewModel(browserViewModel: browserViewModel)
         )
+        _addressBarViewModel = StateObject(wrappedValue: AddressBarViewModel())
     }
 
     var body: some View {
@@ -91,7 +92,7 @@ struct BrowserRootView: View {
             VStack(spacing: 0) {
                 BrowserTopBar(
                     viewModel: viewModel,
-                    addressInput: addressInputBinding,
+                    addressInput: addressBarInputBinding,
                     addressFieldFocus: $isAddressFieldFocused,
                     isSiteSettingsPresented: siteSettingsPresentedBinding,
                     isTabsOverviewPresented: tabsOverviewSheetBinding,
@@ -123,26 +124,39 @@ struct BrowserRootView: View {
                 .animation(.easeOut(duration: 0.15), value: commandPaletteViewModel.isPresented)
         }
         .onAppear {
-            addressInput = currentTabURL
+            addressBarViewModel.initialize(activeTab: viewModel.activeTab, settings: viewModel.sessionSettings)
         }
-        .onChange(of: viewModel.selectedTabID) {
-            addressInput = currentTabURL
+        .onChange(of: activeTabIdentity) {
+            addressBarViewModel.didSelectActiveTab(viewModel.activeTab, settings: viewModel.sessionSettings)
         }
-        .onChange(of: currentTabURL) {
-            guard !isAddressFieldFocused else { return }
-            addressInput = currentTabURL
+        .onChange(of: activeTabSnapshot) {
+            addressBarViewModel.didUpdateActiveTab(viewModel.activeTab, settings: viewModel.sessionSettings)
         }
         .onChange(of: isAddressFieldFocused) {
-            if !isAddressFieldFocused {
-                addressInput = currentTabURL
+            addressBarViewModel.didChangeFocus(
+                isFocused: isAddressFieldFocused,
+                activeURLString: currentTabURL,
+                settings: viewModel.sessionSettings
+            )
+
+            guard isAddressFieldFocused else { return }
+            DispatchQueue.main.async {
+                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
             }
+        }
+        .onChange(of: addressDisplaySettingsSignature) {
+            addressBarViewModel.didChangeDisplaySettings(
+                activeURLString: currentTabURL,
+                settings: viewModel.sessionSettings
+            )
         }
         .onChange(of: viewModel.addressBarFocusToken) {
             isAddressFieldFocused = true
-            guard viewModel.shouldSelectAllInAddressBar else { return }
             DispatchQueue.main.async {
-                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
-                viewModel.consumeAddressBarSelectAllRequest()
+                if viewModel.shouldSelectAllInAddressBar {
+                    NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                    viewModel.consumeAddressBarSelectAllRequest()
+                }
             }
         }
         .onChange(of: commandPaletteViewModel.isPresented) {
@@ -372,10 +386,10 @@ struct BrowserRootView: View {
         )
     }
 
-    private var addressInputBinding: Binding<String> {
+    private var addressBarInputBinding: Binding<String> {
         Binding(
-            get: { addressInput },
-            set: { addressInput = $0 }
+            get: { addressBarViewModel.inputText },
+            set: { addressBarViewModel.inputText = $0 }
         )
     }
 
@@ -390,9 +404,41 @@ struct BrowserRootView: View {
         viewModel.activeTab?.urlString ?? ""
     }
 
-    private func submitAddressBar() {
-        viewModel.loadSelectedTab(from: addressInput)
+    private var activeTabIdentity: UUID? {
+        viewModel.activeTab?.id
     }
+
+    private var activeTabSnapshot: ActiveTabSnapshot {
+        ActiveTabSnapshot(
+            id: viewModel.activeTab?.id,
+            urlString: viewModel.activeTab?.urlString ?? "",
+            isLoading: viewModel.activeTab?.isLoading ?? false
+        )
+    }
+
+    private var addressDisplaySettingsSignature: AddressDisplaySettingsSignature {
+        AddressDisplaySettingsSignature(
+            hideHTTPS: viewModel.sessionSettings.hideHTTPSInAddressBar,
+            hideWWW: viewModel.sessionSettings.hideWWWInAddressBar,
+            alwaysShowFullURL: viewModel.sessionSettings.alwaysShowFullURLInAddressBar
+        )
+    }
+
+    private func submitAddressBar() {
+        viewModel.loadSelectedTab(from: addressBarViewModel.inputText)
+    }
+}
+
+private struct ActiveTabSnapshot: Equatable {
+    let id: UUID?
+    let urlString: String
+    let isLoading: Bool
+}
+
+private struct AddressDisplaySettingsSignature: Equatable {
+    let hideHTTPS: Bool
+    let hideWWW: Bool
+    let alwaysShowFullURL: Bool
 }
 
 private enum WindowLaunchState {

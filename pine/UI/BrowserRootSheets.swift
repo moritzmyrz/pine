@@ -268,6 +268,25 @@ struct SettingsSheetView: View {
                     ))
                 }
 
+                Section("Address Bar") {
+                    Toggle("Always show full URL", isOn: Binding(
+                        get: { viewModel.sessionSettings.alwaysShowFullURLInAddressBar },
+                        set: { viewModel.setAlwaysShowFullURLInAddressBar($0) }
+                    ))
+
+                    Toggle("Hide https://", isOn: Binding(
+                        get: { viewModel.sessionSettings.hideHTTPSInAddressBar },
+                        set: { viewModel.setHideHTTPSInAddressBar($0) }
+                    ))
+                    .disabled(viewModel.sessionSettings.alwaysShowFullURLInAddressBar)
+
+                    Toggle("Hide www.", isOn: Binding(
+                        get: { viewModel.sessionSettings.hideWWWInAddressBar },
+                        set: { viewModel.setHideWWWInAddressBar($0) }
+                    ))
+                    .disabled(viewModel.sessionSettings.alwaysShowFullURLInAddressBar)
+                }
+
                 Section("Session") {
                     Toggle("Restore previous session", isOn: Binding(
                         get: { viewModel.sessionSettings.restorePreviousSession },

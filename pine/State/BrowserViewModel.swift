@@ -237,6 +237,9 @@ final class BrowserViewModel: ObservableObject {
     func setRestorePreviousSessionEnabled(_ enabled: Bool) { sessionManager.setRestorePreviousSessionEnabled(enabled) }
     func setIncludePrivateTabsInSession(_ enabled: Bool) { sessionManager.setIncludePrivateTabsInSession(enabled) }
     func setShowCompactTabStrip(_ enabled: Bool) { sessionManager.setShowCompactTabStrip(enabled) }
+    func setHideHTTPSInAddressBar(_ enabled: Bool) { sessionManager.setHideHTTPSInAddressBar(enabled) }
+    func setHideWWWInAddressBar(_ enabled: Bool) { sessionManager.setHideWWWInAddressBar(enabled) }
+    func setAlwaysShowFullURLInAddressBar(_ enabled: Bool) { sessionManager.setAlwaysShowFullURLInAddressBar(enabled) }
     var hasSavableTabsForWorkspace: Bool { workspaceController.hasSavableTabs }
     @discardableResult
     func createWorkspaceFromCurrentTabs(named name: String?) -> UUID? {

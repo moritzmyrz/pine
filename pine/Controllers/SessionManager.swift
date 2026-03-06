@@ -88,6 +88,21 @@ final class SessionManager {
         sessionStore.saveSettings(store.sessionSettings)
     }
 
+    func setHideHTTPSInAddressBar(_ enabled: Bool) {
+        store.sessionSettings.hideHTTPSInAddressBar = enabled
+        sessionStore.saveSettings(store.sessionSettings)
+    }
+
+    func setHideWWWInAddressBar(_ enabled: Bool) {
+        store.sessionSettings.hideWWWInAddressBar = enabled
+        sessionStore.saveSettings(store.sessionSettings)
+    }
+
+    func setAlwaysShowFullURLInAddressBar(_ enabled: Bool) {
+        store.sessionSettings.alwaysShowFullURLInAddressBar = enabled
+        sessionStore.saveSettings(store.sessionSettings)
+    }
+
     func persistSession() {
         guard store.sessionSettings.restorePreviousSession else { return }
         let now = Date()

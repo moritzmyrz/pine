@@ -63,6 +63,9 @@ struct BrowserSettings: Codable {
     var restorePreviousSession: Bool
     var includePrivateTabsInSession: Bool
     var showCompactTabStrip: Bool
+    var hideHTTPSInAddressBar: Bool
+    var hideWWWInAddressBar: Bool
+    var alwaysShowFullURLInAddressBar: Bool
     var currentProfileID: UUID?
     var enableWebInspectorInDebugBuilds: Bool
     var enableWebInspectorInReleaseBuilds: Bool
@@ -71,6 +74,9 @@ struct BrowserSettings: Codable {
         restorePreviousSession: true,
         includePrivateTabsInSession: false,
         showCompactTabStrip: true,
+        hideHTTPSInAddressBar: true,
+        hideWWWInAddressBar: true,
+        alwaysShowFullURLInAddressBar: false,
         currentProfileID: nil,
         enableWebInspectorInDebugBuilds: true,
         enableWebInspectorInReleaseBuilds: false
@@ -80,6 +86,9 @@ struct BrowserSettings: Codable {
         case restorePreviousSession
         case includePrivateTabsInSession
         case showCompactTabStrip
+        case hideHTTPSInAddressBar
+        case hideWWWInAddressBar
+        case alwaysShowFullURLInAddressBar
         case currentProfileID
         case enableWebInspectorInDebugBuilds
         case enableWebInspectorInReleaseBuilds
@@ -89,6 +98,9 @@ struct BrowserSettings: Codable {
         restorePreviousSession: Bool,
         includePrivateTabsInSession: Bool,
         showCompactTabStrip: Bool,
+        hideHTTPSInAddressBar: Bool,
+        hideWWWInAddressBar: Bool,
+        alwaysShowFullURLInAddressBar: Bool,
         currentProfileID: UUID?,
         enableWebInspectorInDebugBuilds: Bool,
         enableWebInspectorInReleaseBuilds: Bool
@@ -96,6 +108,9 @@ struct BrowserSettings: Codable {
         self.restorePreviousSession = restorePreviousSession
         self.includePrivateTabsInSession = includePrivateTabsInSession
         self.showCompactTabStrip = showCompactTabStrip
+        self.hideHTTPSInAddressBar = hideHTTPSInAddressBar
+        self.hideWWWInAddressBar = hideWWWInAddressBar
+        self.alwaysShowFullURLInAddressBar = alwaysShowFullURLInAddressBar
         self.currentProfileID = currentProfileID
         self.enableWebInspectorInDebugBuilds = enableWebInspectorInDebugBuilds
         self.enableWebInspectorInReleaseBuilds = enableWebInspectorInReleaseBuilds
@@ -106,6 +121,10 @@ struct BrowserSettings: Codable {
         restorePreviousSession = try container.decodeIfPresent(Bool.self, forKey: .restorePreviousSession) ?? true
         includePrivateTabsInSession = try container.decodeIfPresent(Bool.self, forKey: .includePrivateTabsInSession) ?? false
         showCompactTabStrip = try container.decodeIfPresent(Bool.self, forKey: .showCompactTabStrip) ?? true
+        hideHTTPSInAddressBar = try container.decodeIfPresent(Bool.self, forKey: .hideHTTPSInAddressBar) ?? true
+        hideWWWInAddressBar = try container.decodeIfPresent(Bool.self, forKey: .hideWWWInAddressBar) ?? true
+        alwaysShowFullURLInAddressBar =
+            try container.decodeIfPresent(Bool.self, forKey: .alwaysShowFullURLInAddressBar) ?? false
         currentProfileID = try container.decodeIfPresent(UUID.self, forKey: .currentProfileID)
         enableWebInspectorInDebugBuilds =
             try container.decodeIfPresent(Bool.self, forKey: .enableWebInspectorInDebugBuilds) ?? true
