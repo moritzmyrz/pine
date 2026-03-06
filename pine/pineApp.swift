@@ -170,6 +170,13 @@ struct pineApp: App {
             }
 
             CommandMenu("View") {
+                Button("Toggle Zen Mode") {
+                    postWindowCommand(.pineToggleZenMode)
+                }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+
+                Divider()
+
                 Button("Toggle Split View") {
                     postWindowCommand(.pineToggleSplitView)
                 }

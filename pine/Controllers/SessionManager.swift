@@ -93,6 +93,16 @@ final class SessionManager {
         sessionStore.saveSettings(store.sessionSettings)
     }
 
+    func setZenModeHidesToolbar(_ enabled: Bool) {
+        store.sessionSettings.zenModeHidesToolbar = enabled
+        sessionStore.saveSettings(store.sessionSettings)
+    }
+
+    func setEscExitsZenMode(_ enabled: Bool) {
+        store.sessionSettings.escExitsZenMode = enabled
+        sessionStore.saveSettings(store.sessionSettings)
+    }
+
     func setHideHTTPSInAddressBar(_ enabled: Bool) {
         store.sessionSettings.hideHTTPSInAddressBar = enabled
         sessionStore.saveSettings(store.sessionSettings)

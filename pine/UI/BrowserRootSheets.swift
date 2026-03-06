@@ -270,6 +270,14 @@ struct SettingsSheetView: View {
                         get: { viewModel.sessionSettings.showBookmarksBar },
                         set: { viewModel.setShowBookmarksBar($0) }
                     ))
+                    Toggle("Zen Mode hides toolbar", isOn: Binding(
+                        get: { viewModel.sessionSettings.zenModeHidesToolbar },
+                        set: { viewModel.setZenModeHidesToolbar($0) }
+                    ))
+                    Toggle("Esc exits Zen Mode", isOn: Binding(
+                        get: { viewModel.sessionSettings.escExitsZenMode },
+                        set: { viewModel.setEscExitsZenMode($0) }
+                    ))
                 }
 
                 Section("Address Bar") {

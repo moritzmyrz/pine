@@ -45,6 +45,7 @@ final class BrowserStore: ObservableObject {
 
     @Published var isDownloadsShelfDismissed = false
     @Published var profilePendingDeletion: Profile?
+    @Published var zenModeEnabled = false
 
     var selectedTab: Tab? {
         guard let selectedTabID else { return nil }

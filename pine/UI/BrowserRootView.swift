@@ -86,31 +86,38 @@ struct BrowserRootView: View {
     }
 
     private var rootLayout: some View {
-        ZStack {
-            VStack(spacing: 0) {
-                BrowserTopBar(
-                    viewModel: viewModel,
-                    addressInput: addressBarInputBinding,
-                    addressFieldFocus: $isAddressFieldFocused,
-                    isSiteSettingsPresented: siteSettingsPresentedBinding,
-                    isTabsOverviewPresented: tabsOverviewSheetBinding,
-                    submitAddressBar: submitAddressBar
-                )
-                loadingProgressBar
+        let zenStyle = ZenModeStyle(
+            isZenModeEnabled: viewModel.isZenModeEnabled,
+            hideToolbarInZenMode: viewModel.sessionSettings.zenModeHidesToolbar
+        )
 
-                if viewModel.sessionSettings.showCompactTabStrip {
+        return ZStack {
+            VStack(spacing: 0) {
+                if !zenStyle.shouldHideToolbar {
+                    BrowserTopBar(
+                        viewModel: viewModel,
+                        addressInput: addressBarInputBinding,
+                        addressFieldFocus: $isAddressFieldFocused,
+                        isSiteSettingsPresented: siteSettingsPresentedBinding,
+                        isTabsOverviewPresented: tabsOverviewSheetBinding,
+                        submitAddressBar: submitAddressBar
+                    )
+                    loadingProgressBar
+                }
+
+                if viewModel.sessionSettings.showCompactTabStrip, !zenStyle.shouldHideTabStrip {
                     Divider()
                     tabStrip
                 }
 
-                if viewModel.sessionSettings.showBookmarksBar {
+                if viewModel.sessionSettings.showBookmarksBar, !zenStyle.shouldHideBookmarksBar {
                     Divider()
                     BookmarksBarView(viewModel: viewModel)
                 }
 
                 browserContentArea
 
-                if viewModel.downloadController.shouldShowShelf {
+                if viewModel.downloadController.shouldShowShelf, !zenStyle.shouldHideDownloadsShelf {
                     Divider()
                     DownloadsShelfView(
                         downloadManager: viewModel.downloadManager,
@@ -192,6 +199,20 @@ struct BrowserRootView: View {
             }
             .keyboardShortcut("k", modifiers: .command)
             .hidden()
+
+            Button("Toggle Zen Mode") {
+                viewModel.toggleZenMode()
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .hidden()
+
+            if viewModel.isZenModeEnabled && viewModel.sessionSettings.escExitsZenMode {
+                Button("Exit Zen Mode") {
+                    viewModel.exitZenMode()
+                }
+                .keyboardShortcut(.escape, modifiers: [])
+                .hidden()
+            }
         }
     }
 
@@ -226,12 +247,14 @@ struct BrowserRootView: View {
                         paneContainer(tabID: secondaryTabID, pane: .secondary)
                             .frame(width: secondaryWidth)
                             .frame(maxHeight: .infinity)
-                        SplitViewControls(
-                            viewModel: viewModel,
-                            primaryTabID: primaryTabID,
-                            secondaryTabID: secondaryTabID
-                        )
-                        .padding(8)
+                        if !viewModel.isZenModeEnabled {
+                            SplitViewControls(
+                                viewModel: viewModel,
+                                primaryTabID: primaryTabID,
+                                secondaryTabID: secondaryTabID
+                            )
+                            .padding(8)
+                        }
                     }
                     .frame(width: secondaryWidth)
                     .frame(maxHeight: .infinity)

@@ -37,4 +37,5 @@ extension Notification.Name {
     static let pineOpenLibrary = Notification.Name("pine.openLibrary")
     static let pineToggleBookmarkForCurrentTab = Notification.Name("pine.toggleBookmarkForCurrentTab")
     static let pineToggleBookmarksBar = Notification.Name("pine.toggleBookmarksBar")
+    static let pineToggleZenMode = Notification.Name("pine.toggleZenMode")
 }

@@ -27,7 +27,7 @@ private struct LibrarySettingsContent: View {
 
     var body: some View {
         Form {
-            if shouldShowSection(keywords: ["appearance", "compact", "tabs", "bookmarks", "bar", "rank"]) {
+            if shouldShowSection(keywords: ["appearance", "compact", "tabs", "bookmarks", "bar", "rank", "zen", "escape"]) {
                 Section("Appearance") {
                     Toggle("Show compact tab strip", isOn: Binding(
                         get: { viewModel.sessionSettings.showCompactTabStrip },
@@ -36,6 +36,14 @@ private struct LibrarySettingsContent: View {
                     Toggle("Show bookmark bar", isOn: Binding(
                         get: { viewModel.sessionSettings.showBookmarksBar },
                         set: { viewModel.setShowBookmarksBar($0) }
+                    ))
+                    Toggle("Zen Mode hides toolbar", isOn: Binding(
+                        get: { viewModel.sessionSettings.zenModeHidesToolbar },
+                        set: { viewModel.setZenModeHidesToolbar($0) }
+                    ))
+                    Toggle("Esc exits Zen Mode", isOn: Binding(
+                        get: { viewModel.sessionSettings.escExitsZenMode },
+                        set: { viewModel.setEscExitsZenMode($0) }
                     ))
                 }
             }

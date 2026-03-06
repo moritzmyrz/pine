@@ -64,6 +64,8 @@ struct BrowserSettings: Codable {
     var includePrivateTabsInSession: Bool
     var showCompactTabStrip: Bool
     var showBookmarksBar: Bool
+    var zenModeHidesToolbar: Bool
+    var escExitsZenMode: Bool
     var hideHTTPSInAddressBar: Bool
     var hideWWWInAddressBar: Bool
     var alwaysShowFullURLInAddressBar: Bool
@@ -76,6 +78,8 @@ struct BrowserSettings: Codable {
         includePrivateTabsInSession: false,
         showCompactTabStrip: true,
         showBookmarksBar: true,
+        zenModeHidesToolbar: true,
+        escExitsZenMode: true,
         hideHTTPSInAddressBar: true,
         hideWWWInAddressBar: true,
         alwaysShowFullURLInAddressBar: false,
@@ -89,6 +93,8 @@ struct BrowserSettings: Codable {
         case includePrivateTabsInSession
         case showCompactTabStrip
         case showBookmarksBar
+        case zenModeHidesToolbar
+        case escExitsZenMode
         case hideHTTPSInAddressBar
         case hideWWWInAddressBar
         case alwaysShowFullURLInAddressBar
@@ -102,6 +108,8 @@ struct BrowserSettings: Codable {
         includePrivateTabsInSession: Bool,
         showCompactTabStrip: Bool,
         showBookmarksBar: Bool,
+        zenModeHidesToolbar: Bool,
+        escExitsZenMode: Bool,
         hideHTTPSInAddressBar: Bool,
         hideWWWInAddressBar: Bool,
         alwaysShowFullURLInAddressBar: Bool,
@@ -113,6 +121,8 @@ struct BrowserSettings: Codable {
         self.includePrivateTabsInSession = includePrivateTabsInSession
         self.showCompactTabStrip = showCompactTabStrip
         self.showBookmarksBar = showBookmarksBar
+        self.zenModeHidesToolbar = zenModeHidesToolbar
+        self.escExitsZenMode = escExitsZenMode
         self.hideHTTPSInAddressBar = hideHTTPSInAddressBar
         self.hideWWWInAddressBar = hideWWWInAddressBar
         self.alwaysShowFullURLInAddressBar = alwaysShowFullURLInAddressBar
@@ -127,6 +137,8 @@ struct BrowserSettings: Codable {
         includePrivateTabsInSession = try container.decodeIfPresent(Bool.self, forKey: .includePrivateTabsInSession) ?? false
         showCompactTabStrip = try container.decodeIfPresent(Bool.self, forKey: .showCompactTabStrip) ?? true
         showBookmarksBar = try container.decodeIfPresent(Bool.self, forKey: .showBookmarksBar) ?? true
+        zenModeHidesToolbar = try container.decodeIfPresent(Bool.self, forKey: .zenModeHidesToolbar) ?? true
+        escExitsZenMode = try container.decodeIfPresent(Bool.self, forKey: .escExitsZenMode) ?? true
         hideHTTPSInAddressBar = try container.decodeIfPresent(Bool.self, forKey: .hideHTTPSInAddressBar) ?? true
         hideWWWInAddressBar = try container.decodeIfPresent(Bool.self, forKey: .hideWWWInAddressBar) ?? true
         alwaysShowFullURLInAddressBar =
