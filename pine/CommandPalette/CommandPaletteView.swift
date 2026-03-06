@@ -4,6 +4,7 @@ import SwiftUI
 struct CommandPaletteView: View {
     @ObservedObject var viewModel: CommandPaletteViewModel
     @FocusState private var isQueryFieldFocused: Bool
+    @State private var localKeyMonitor: Any?
 
     var body: some View {
         if viewModel.isPresented {
@@ -21,12 +22,16 @@ struct CommandPaletteView: View {
                 DispatchQueue.main.async {
                     isQueryFieldFocused = true
                 }
+                installLocalKeyMonitorIfNeeded()
             }
             .onChange(of: viewModel.isPresented) {
                 guard viewModel.isPresented else { return }
                 DispatchQueue.main.async {
                     isQueryFieldFocused = true
                 }
+            }
+            .onDisappear {
+                removeLocalKeyMonitor()
             }
             .onExitCommand {
                 viewModel.close()
@@ -185,5 +190,35 @@ struct CommandPaletteView: View {
 
     private func shouldOpenInNewTab() -> Bool {
         NSEvent.modifierFlags.contains(.option)
+    }
+
+    private func installLocalKeyMonitorIfNeeded() {
+        guard localKeyMonitor == nil else { return }
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard viewModel.isPresented else { return event }
+            switch event.keyCode {
+            case 126: // up arrow
+                viewModel.moveSelectionUp()
+                return nil
+            case 125: // down arrow
+                viewModel.moveSelectionDown()
+                return nil
+            case 53: // escape
+                viewModel.close()
+                return nil
+            case 36, 76: // return, keypad enter
+                let openInNewTab = event.modifierFlags.contains(.option)
+                viewModel.executeSelectedItem(openInNewTab: openInNewTab)
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+
+    private func removeLocalKeyMonitor() {
+        guard let localKeyMonitor else { return }
+        NSEvent.removeMonitor(localKeyMonitor)
+        self.localKeyMonitor = nil
     }
 }
