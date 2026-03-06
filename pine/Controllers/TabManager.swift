@@ -312,7 +312,23 @@ final class TabManager {
 
     private func maintainSplitStateOnTabRemoval(closedTabID: UUID) {
         guard store.isSplitViewEnabled else { return }
+        // Keep split mode only when two distinct tabs still exist.
+        // If only one tab remains, exiting split is less surprising than auto-creating tabs.
+        guard store.tabs.count >= 2 else {
+            disableSplitView()
+            return
+        }
+
         if store.splitSecondaryTabID == closedTabID {
+            store.splitSecondaryTabID = preferredSecondaryTabID()
+            if store.splitSecondaryTabID == nil {
+                disableSplitView()
+            }
+            return
+        }
+
+        if let selectedPrimaryID = store.selectedTabID,
+           store.splitSecondaryTabID == selectedPrimaryID {
             store.splitSecondaryTabID = preferredSecondaryTabID()
             if store.splitSecondaryTabID == nil {
                 disableSplitView()

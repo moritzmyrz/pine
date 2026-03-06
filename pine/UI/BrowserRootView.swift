@@ -145,8 +145,17 @@ struct BrowserRootView: View {
                 tabContent(tabID: primaryTabID)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Divider()
-                tabContent(tabID: secondaryTabID)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ZStack(alignment: .topLeading) {
+                    tabContent(tabID: secondaryTabID)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    SplitViewControls(
+                        viewModel: viewModel,
+                        primaryTabID: primaryTabID,
+                        secondaryTabID: secondaryTabID
+                    )
+                    .padding(8)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let selectedTab = viewModel.selectedTab {
