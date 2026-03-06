@@ -2,12 +2,22 @@ import AppKit
 import SwiftUI
 
 struct BrowserRootView: View {
-    @StateObject private var viewModel = BrowserViewModel()
+    @StateObject private var viewModel: BrowserViewModel
+    @StateObject private var commandPaletteViewModel: CommandPaletteViewModel
     @State private var draggedTabID: UUID?
     @State private var addressInput = ""
     @State private var isSiteSettingsPresented = false
     @State private var isTabsOverviewPresented = false
+    @State private var shouldRestoreAddressFocusAfterPalette = false
     @FocusState private var isAddressFieldFocused: Bool
+
+    init() {
+        let browserViewModel = BrowserViewModel()
+        _viewModel = StateObject(wrappedValue: browserViewModel)
+        _commandPaletteViewModel = StateObject(
+            wrappedValue: CommandPaletteViewModel(browserViewModel: browserViewModel)
+        )
+    }
 
     var body: some View {
         configuredRootView
@@ -100,12 +110,11 @@ struct BrowserRootView: View {
                 }
             }
             .background {
-                Button("Focus Address") {
-                    viewModel.requestAddressBarFocus(selectAll: true)
-                }
-                .keyboardShortcut("l", modifiers: .command)
-                .hidden()
+                shortcutButtons
             }
+
+            CommandPaletteView(viewModel: commandPaletteViewModel)
+                .animation(.easeOut(duration: 0.15), value: commandPaletteViewModel.isPresented)
         }
         .onAppear {
             addressInput = currentTabURL
@@ -129,6 +138,37 @@ struct BrowserRootView: View {
                 NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
                 viewModel.consumeAddressBarSelectAllRequest()
             }
+        }
+        .onChange(of: commandPaletteViewModel.isPresented) {
+            if commandPaletteViewModel.isPresented {
+                shouldRestoreAddressFocusAfterPalette = isAddressFieldFocused
+                isAddressFieldFocused = false
+                return
+            }
+
+            DispatchQueue.main.async {
+                if shouldRestoreAddressFocusAfterPalette {
+                    viewModel.requestAddressBarFocus(selectAll: false)
+                } else {
+                    viewModel.focusActiveWebViewIfPossible()
+                }
+            }
+        }
+    }
+
+    private var shortcutButtons: some View {
+        VStack {
+            Button("Focus Address") {
+                viewModel.requestAddressBarFocus(selectAll: true)
+            }
+            .keyboardShortcut("l", modifiers: .command)
+            .hidden()
+
+            Button("Toggle Command Palette") {
+                commandPaletteViewModel.toggle()
+            }
+            .keyboardShortcut("k", modifiers: .command)
+            .hidden()
         }
     }
 
