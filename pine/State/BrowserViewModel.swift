@@ -9,6 +9,7 @@ final class BrowserViewModel: ObservableObject {
     let navigationController: NavigationController
     let sessionManager: SessionManager
     let profileManager: ProfileManager
+    let workspaceController: WorkspaceController
     let downloadController: DownloadController
     let permissionController: PermissionController
 
@@ -17,6 +18,7 @@ final class BrowserViewModel: ObservableObject {
     let downloadManager: DownloadManager
     let sessionStore: SessionStore
     let profileStore: ProfileStore
+    let workspaceStore: WorkspaceStore
     let sitePermissionsStore: SitePermissionsStore
     let contentBlockerService: ContentBlockerService
 
@@ -24,14 +26,25 @@ final class BrowserViewModel: ObservableObject {
 
     var tabs: [Tab] { store.tabs }
     var selectedTabID: UUID? { store.selectedTabID }
+    var isSplitViewEnabled: Bool { store.isSplitViewEnabled }
+    var splitSecondaryTabID: UUID? { store.splitSecondaryTabID }
+    var splitPrimaryTabID: UUID? { store.splitPrimaryTabID }
+    var activePane: ActivePane { store.activePane }
+    var splitRatio: CGFloat { store.splitRatio }
     var profiles: [Profile] { store.profiles }
     var currentProfileID: UUID { store.currentProfileID }
+    var workspaces: [Workspace] { store.workspaces }
+    var currentWorkspaceID: UUID? { store.currentWorkspaceID }
     var sessionSettings: BrowserSettings { store.sessionSettings }
     var permissionDefaults: PermissionDefaults { store.permissionDefaults }
     var trackerBlockingMode: TrackerBlockingMode { store.trackerBlockingMode }
     var addressBarFocusToken: UUID { store.addressBarFocusToken }
     var shouldSelectAllInAddressBar: Bool { store.shouldSelectAllInAddressBar }
     var selectedTab: Tab? { store.selectedTab }
+    var activeTab: Tab? {
+        guard let activeID = activeNavigationTabID else { return store.selectedTab }
+        return store.tabs.first(where: { $0.id == activeID })
+    }
     var sortedTabs: [Tab] { store.sortedTabs }
     var currentProfile: Profile? { store.currentProfile }
 
@@ -41,6 +54,7 @@ final class BrowserViewModel: ObservableObject {
         downloadManager: DownloadManager = DownloadManager(),
         sessionStore: SessionStore = SessionStore(),
         profileStore: ProfileStore = ProfileStore(),
+        workspaceStore: WorkspaceStore = WorkspaceStore(),
         sitePermissionsStore: SitePermissionsStore = SitePermissionsStore(),
         contentBlockerService: ContentBlockerService = ContentBlockerService()
     ) {
@@ -49,6 +63,7 @@ final class BrowserViewModel: ObservableObject {
         self.downloadManager = downloadManager
         self.sessionStore = sessionStore
         self.profileStore = profileStore
+        self.workspaceStore = workspaceStore
         self.sitePermissionsStore = sitePermissionsStore
         self.contentBlockerService = contentBlockerService
 
@@ -78,6 +93,14 @@ final class BrowserViewModel: ObservableObject {
             tabManager: tabManager
         )
         self.profileManager = profileManager
+
+        let workspaceController = WorkspaceController(
+            store: store,
+            workspaceStore: workspaceStore,
+            tabManager: tabManager,
+            sessionStore: sessionStore
+        )
+        self.workspaceController = workspaceController
 
         let navigationController = NavigationController(
             store: store,
@@ -135,6 +158,15 @@ final class BrowserViewModel: ObservableObject {
     func closeCurrentTab() { tabManager.closeCurrentTab() }
     func reopenClosedTab() { tabManager.reopenClosedTab() }
     func selectTab(id: UUID) { tabManager.selectTab(id: id) }
+    func toggleSplitView() { tabManager.toggleSplitView() }
+    func enableSplitView(withSecondaryTabID secondaryTabID: UUID) { tabManager.enableSplitView(withSecondaryTabID: secondaryTabID) }
+    func disableSplitView() { tabManager.disableSplitView() }
+    func setSecondaryTab(id: UUID?) { tabManager.setSecondaryTab(id: id) }
+    func swapSplitPanes() { tabManager.swapSplitPanes() }
+    func setActivePane(_ pane: ActivePane) { tabManager.setActivePane(pane) }
+    func switchActivePane(forward: Bool) { tabManager.switchActivePane(forward: forward) }
+    func setSplitRatio(_ ratio: CGFloat) { tabManager.setSplitRatio(ratio) }
+    func resetSplitRatio() { tabManager.resetSplitRatio() }
 
     func tabsMatching(query: String) -> [Tab] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -148,6 +180,18 @@ final class BrowserViewModel: ObservableObject {
     func profileName(for profileID: UUID) -> String { profileManager.profileName(for: profileID) }
     func setRestorePreviousSessionEnabled(_ enabled: Bool) { sessionManager.setRestorePreviousSessionEnabled(enabled) }
     func setIncludePrivateTabsInSession(_ enabled: Bool) { sessionManager.setIncludePrivateTabsInSession(enabled) }
+    func setShowCompactTabStrip(_ enabled: Bool) { sessionManager.setShowCompactTabStrip(enabled) }
+    var hasSavableTabsForWorkspace: Bool { workspaceController.hasSavableTabs }
+    @discardableResult
+    func createWorkspaceFromCurrentTabs(named name: String?) -> UUID? {
+        workspaceController.createWorkspaceFromCurrentTabs(named: name)
+    }
+    func switchToWorkspace(id: UUID) {
+        workspaceController.switchToWorkspace(id: id)
+        sessionManager.persistSession()
+    }
+    func renameWorkspace(id: UUID, to newName: String) { workspaceController.renameWorkspace(id: id, to: newName) }
+    func deleteWorkspace(id: UUID) { workspaceController.deleteWorkspace(id: id) }
     func selectProfile(id: UUID) { profileManager.selectProfile(id: id) }
     @discardableResult func createProfile(named name: String?) -> UUID { profileManager.createProfile(named: name) }
     func renameProfile(id: UUID, to newName: String) { profileManager.renameProfile(id: id, to: newName) }
@@ -189,11 +233,30 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func webView(for tabID: UUID) -> WKWebView { navigationController.webView(for: tabID) }
-    func loadSelectedTab() { navigationController.loadSelectedTab() }
-    func loadSelectedTab(from urlInput: String) { navigationController.loadSelectedTab(from: urlInput) }
-    func goBackSelectedTab() { navigationController.goBackSelectedTab() }
-    func goForwardSelectedTab() { navigationController.goForwardSelectedTab() }
-    func reloadSelectedTab() { navigationController.reloadSelectedTab() }
+    func loadSelectedTab() {
+        guard let activeTabID = activeNavigationTabID else { return }
+        navigationController.loadURL(activeTabURLString(for: activeTabID), in: activeTabID)
+    }
+    func loadSelectedTab(from urlInput: String) {
+        guard let activeTabID = activeNavigationTabID else { return }
+        navigationController.loadTab(tabID: activeTabID, from: urlInput)
+    }
+    func goBackSelectedTab() {
+        guard let activeTabID = activeNavigationTabID else { return }
+        navigationController.goBack(tabID: activeTabID)
+    }
+    func goForwardSelectedTab() {
+        guard let activeTabID = activeNavigationTabID else { return }
+        navigationController.goForward(tabID: activeTabID)
+    }
+    func reloadSelectedTab() {
+        guard let activeTabID = activeNavigationTabID else { return }
+        navigationController.reload(tabID: activeTabID)
+    }
+    func stopLoadingSelectedTab() {
+        guard let activeTabID = activeNavigationTabID else { return }
+        navigationController.stopLoading(tabID: activeTabID)
+    }
     func zoomInSelectedTab() { navigationController.zoomInSelectedTab() }
     func zoomOutSelectedTab() { navigationController.zoomOutSelectedTab() }
     func resetZoomSelectedTab() { navigationController.resetZoomSelectedTab() }
@@ -249,6 +312,7 @@ final class BrowserViewModel: ObservableObject {
         sessionManager.applyInitialSettings()
         permissionController.loadInitialState()
         profileManager.loadProfiles()
+        workspaceController.loadWorkspaces()
 
         let defaultProfileID = store.profiles.first(where: \.isDefault)?.id ?? store.profiles[0].id
         let savedProfileID = store.sessionSettings.currentProfileID
@@ -335,6 +399,21 @@ final class BrowserViewModel: ObservableObject {
         NotificationCenter.default.publisher(for: .pineCopyCleanLink)
             .sink { [weak self] _ in self?.copyCleanLinkForSelectedTab() }
             .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineToggleSplitView)
+            .sink { [weak self] _ in self?.toggleSplitView() }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineSwitchActivePaneLeft)
+            .sink { [weak self] _ in self?.switchActivePane(forward: false) }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineSwitchActivePaneRight)
+            .sink { [weak self] _ in self?.switchActivePane(forward: true) }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineSwapSplitPanes)
+            .sink { [weak self] _ in self?.swapSplitPanes() }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineResetSplitDivider)
+            .sink { [weak self] _ in self?.resetSplitRatio() }
+            .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
             .sink { [weak self] _ in self?.sessionManager.persistSession() }
@@ -343,5 +422,19 @@ final class BrowserViewModel: ObservableObject {
             .autoconnect()
             .sink { [weak self] _ in self?.sessionManager.persistSession() }
             .store(in: &cancellables)
+    }
+
+    private var activeNavigationTabID: UUID? {
+        if store.isSplitViewEnabled,
+           store.activePane == .secondary,
+           let secondaryID = store.splitSecondaryTabID,
+           store.tabs.contains(where: { $0.id == secondaryID }) {
+            return secondaryID
+        }
+        return store.selectedTabID
+    }
+
+    private func activeTabURLString(for tabID: UUID) -> String {
+        store.tabs.first(where: { $0.id == tabID })?.urlString ?? ""
     }
 }

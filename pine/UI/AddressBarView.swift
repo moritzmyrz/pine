@@ -118,7 +118,7 @@ struct AddressBarView: View {
     }
 }
 
-private struct SiteSettingsPopoverView: View {
+struct SiteSettingsPopoverView: View {
     @ObservedObject var viewModel: BrowserViewModel
     @State private var didClearData = false
 

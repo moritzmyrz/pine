@@ -1,12 +1,31 @@
 import Combine
 import Foundation
 
+enum SplitLayout {
+    case vertical
+}
+
+enum ActivePane {
+    case primary
+    case secondary
+}
+
 final class BrowserStore: ObservableObject {
+    static let minSplitRatio: CGFloat = 0.2
+    static let maxSplitRatio: CGFloat = 0.8
+
     @Published var tabs: [Tab] = []
     @Published var selectedTabID: UUID?
+    @Published var isSplitViewEnabled = false
+    @Published var splitSecondaryTabID: UUID?
+    @Published var splitLayout: SplitLayout = .vertical
+    @Published var activePane: ActivePane = .primary
+    @Published var splitRatio: CGFloat = 0.5
 
     @Published var profiles: [Profile] = []
     @Published var currentProfileID: UUID = UUID()
+    @Published var workspaces: [Workspace] = []
+    @Published var currentWorkspaceID: UUID?
 
     @Published var sessionSettings: BrowserSettings = .default
     @Published var permissionDefaults: PermissionDefaults = .default
@@ -29,6 +48,10 @@ final class BrowserStore: ObservableObject {
     var selectedTab: Tab? {
         guard let selectedTabID else { return nil }
         return tabs.first(where: { $0.id == selectedTabID })
+    }
+
+    var splitPrimaryTabID: UUID? {
+        selectedTabID
     }
 
     var sortedTabs: [Tab] {
@@ -58,5 +81,9 @@ final class BrowserStore: ObservableObject {
         let pinnedTabs = tabs.filter(\.isPinned)
         let unpinnedTabs = tabs.filter { !$0.isPinned }
         tabs = pinnedTabs + unpinnedTabs
+    }
+
+    func setSplitRatio(_ value: CGFloat) {
+        splitRatio = min(max(value, Self.minSplitRatio), Self.maxSplitRatio)
     }
 }

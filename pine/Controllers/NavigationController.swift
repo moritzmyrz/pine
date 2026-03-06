@@ -116,10 +116,21 @@ final class NavigationController {
         loadURL(urlInput, in: selectedTab.id)
     }
 
+    func loadTab(tabID: UUID, from urlInput: String) {
+        guard let index = store.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        store.tabs[index].urlString = urlInput
+        loadURL(urlInput, in: tabID)
+    }
+
     func goBackSelectedTab() {
         guard let selectedTabID = store.selectedTabID,
               let webView = webViews[selectedTabID],
               webView.canGoBack else { return }
+        webView.goBack()
+    }
+
+    func goBack(tabID: UUID) {
+        guard let webView = webViews[tabID], webView.canGoBack else { return }
         webView.goBack()
     }
 
@@ -130,10 +141,33 @@ final class NavigationController {
         webView.goForward()
     }
 
+    func goForward(tabID: UUID) {
+        guard let webView = webViews[tabID], webView.canGoForward else { return }
+        webView.goForward()
+    }
+
     func reloadSelectedTab() {
         guard let selectedTabID = store.selectedTabID,
               let webView = webViews[selectedTabID] else { return }
         webView.reload()
+    }
+
+    func reload(tabID: UUID) {
+        guard let webView = webViews[tabID] else { return }
+        webView.reload()
+    }
+
+    func stopLoadingSelectedTab() {
+        guard let selectedTabID = store.selectedTabID,
+              let webView = webViews[selectedTabID] else { return }
+        webView.stopLoading()
+        syncTabState(from: webView, for: selectedTabID)
+    }
+
+    func stopLoading(tabID: UUID) {
+        guard let webView = webViews[tabID] else { return }
+        webView.stopLoading()
+        syncTabState(from: webView, for: tabID)
     }
 
     func zoomInSelectedTab() { adjustZoomForSelectedTab(delta: 0.1) }

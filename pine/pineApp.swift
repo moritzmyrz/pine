@@ -63,7 +63,7 @@ struct pineApp: App {
             }
 
             CommandMenu("Tabs") {
-                Button("Tab Search") {
+                Button("Tabs Overview") {
                     NotificationCenter.default.post(name: .pineShowTabSearch, object: nil)
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
@@ -135,6 +135,35 @@ struct pineApp: App {
                     NotificationCenter.default.post(name: .pineCopyCleanLink, object: nil)
                 }
                 .keyboardShortcut("c", modifiers: [.command, .option, .shift])
+            }
+
+            CommandMenu("View") {
+                Button("Toggle Split View") {
+                    NotificationCenter.default.post(name: .pineToggleSplitView, object: nil)
+                }
+                .keyboardShortcut("\\", modifiers: .command)
+
+                Button("Focus Left Pane") {
+                    NotificationCenter.default.post(name: .pineSwitchActivePaneLeft, object: nil)
+                }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+
+                Button("Focus Right Pane") {
+                    NotificationCenter.default.post(name: .pineSwitchActivePaneRight, object: nil)
+                }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+
+                Button("Swap Split Panes") {
+                    NotificationCenter.default.post(name: .pineSwapSplitPanes, object: nil)
+                }
+                .keyboardShortcut("\\", modifiers: [.command, .shift])
+
+                Button("Reset Split Divider") {
+                    NotificationCenter.default.post(name: .pineResetSplitDivider, object: nil)
+                }
+
+                Button("Flip Split Orientation") {}
+                    .disabled(true)
             }
         }
     }

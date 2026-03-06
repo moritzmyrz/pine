@@ -4,30 +4,53 @@ import WebKit
 struct WebViewContainer: NSViewRepresentable {
     @ObservedObject var viewModel: BrowserViewModel
     let tabID: UUID
+    var onActivate: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(viewModel: viewModel, tabID: tabID)
+        Coordinator(viewModel: viewModel, tabID: tabID, onActivate: onActivate)
     }
 
     func makeNSView(context: Context) -> WKWebView {
         let webView = viewModel.webView(for: tabID)
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
+        context.coordinator.configureActivationGestureIfNeeded(on: webView)
         return webView
     }
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
         nsView.navigationDelegate = context.coordinator
         nsView.uiDelegate = context.coordinator
+        context.coordinator.onActivate = onActivate
+        context.coordinator.configureActivationGestureIfNeeded(on: nsView)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
         private let viewModel: BrowserViewModel
         private let tabID: UUID
+        var onActivate: (() -> Void)?
+        private weak var activationGesture: NSClickGestureRecognizer?
 
-        init(viewModel: BrowserViewModel, tabID: UUID) {
+        init(viewModel: BrowserViewModel, tabID: UUID, onActivate: (() -> Void)?) {
             self.viewModel = viewModel
             self.tabID = tabID
+            self.onActivate = onActivate
+        }
+
+        func configureActivationGestureIfNeeded(on webView: WKWebView) {
+            guard onActivate != nil else { return }
+            if activationGesture == nil {
+                let recognizer = NSClickGestureRecognizer(target: self, action: #selector(handleActivationClick))
+                recognizer.buttonMask = 0x1
+                recognizer.delaysPrimaryMouseButtonEvents = false
+                webView.addGestureRecognizer(recognizer)
+                activationGesture = recognizer
+            }
+        }
+
+        @objc
+        private func handleActivationClick() {
+            onActivate?()
         }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {

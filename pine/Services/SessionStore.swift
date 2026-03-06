@@ -13,12 +13,56 @@ struct PersistedTab: Codable {
 struct BrowserSessionSnapshot: Codable {
     let tabs: [PersistedTab]
     let selectedTabID: UUID?
+    let isSplitViewEnabled: Bool
+    let splitSecondaryTabID: UUID?
+    let activePaneRawValue: String
+    let splitRatio: Double
     let savedAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case tabs
+        case selectedTabID
+        case isSplitViewEnabled
+        case splitSecondaryTabID
+        case activePaneRawValue
+        case splitRatio
+        case savedAt
+    }
+
+    init(
+        tabs: [PersistedTab],
+        selectedTabID: UUID?,
+        isSplitViewEnabled: Bool,
+        splitSecondaryTabID: UUID?,
+        activePaneRawValue: String,
+        splitRatio: Double,
+        savedAt: Date
+    ) {
+        self.tabs = tabs
+        self.selectedTabID = selectedTabID
+        self.isSplitViewEnabled = isSplitViewEnabled
+        self.splitSecondaryTabID = splitSecondaryTabID
+        self.activePaneRawValue = activePaneRawValue
+        self.splitRatio = splitRatio
+        self.savedAt = savedAt
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tabs = try container.decode([PersistedTab].self, forKey: .tabs)
+        selectedTabID = try container.decodeIfPresent(UUID.self, forKey: .selectedTabID)
+        isSplitViewEnabled = try container.decodeIfPresent(Bool.self, forKey: .isSplitViewEnabled) ?? false
+        splitSecondaryTabID = try container.decodeIfPresent(UUID.self, forKey: .splitSecondaryTabID)
+        activePaneRawValue = try container.decodeIfPresent(String.self, forKey: .activePaneRawValue) ?? "primary"
+        splitRatio = try container.decodeIfPresent(Double.self, forKey: .splitRatio) ?? 0.5
+        savedAt = try container.decode(Date.self, forKey: .savedAt)
+    }
 }
 
 struct BrowserSettings: Codable {
     var restorePreviousSession: Bool
     var includePrivateTabsInSession: Bool
+    var showCompactTabStrip: Bool
     var currentProfileID: UUID?
     var enableWebInspectorInDebugBuilds: Bool
     var enableWebInspectorInReleaseBuilds: Bool
@@ -26,6 +70,7 @@ struct BrowserSettings: Codable {
     static let `default` = BrowserSettings(
         restorePreviousSession: true,
         includePrivateTabsInSession: false,
+        showCompactTabStrip: true,
         currentProfileID: nil,
         enableWebInspectorInDebugBuilds: true,
         enableWebInspectorInReleaseBuilds: false
@@ -34,6 +79,7 @@ struct BrowserSettings: Codable {
     private enum CodingKeys: String, CodingKey {
         case restorePreviousSession
         case includePrivateTabsInSession
+        case showCompactTabStrip
         case currentProfileID
         case enableWebInspectorInDebugBuilds
         case enableWebInspectorInReleaseBuilds
@@ -42,12 +88,14 @@ struct BrowserSettings: Codable {
     init(
         restorePreviousSession: Bool,
         includePrivateTabsInSession: Bool,
+        showCompactTabStrip: Bool,
         currentProfileID: UUID?,
         enableWebInspectorInDebugBuilds: Bool,
         enableWebInspectorInReleaseBuilds: Bool
     ) {
         self.restorePreviousSession = restorePreviousSession
         self.includePrivateTabsInSession = includePrivateTabsInSession
+        self.showCompactTabStrip = showCompactTabStrip
         self.currentProfileID = currentProfileID
         self.enableWebInspectorInDebugBuilds = enableWebInspectorInDebugBuilds
         self.enableWebInspectorInReleaseBuilds = enableWebInspectorInReleaseBuilds
@@ -57,6 +105,7 @@ struct BrowserSettings: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         restorePreviousSession = try container.decodeIfPresent(Bool.self, forKey: .restorePreviousSession) ?? true
         includePrivateTabsInSession = try container.decodeIfPresent(Bool.self, forKey: .includePrivateTabsInSession) ?? false
+        showCompactTabStrip = try container.decodeIfPresent(Bool.self, forKey: .showCompactTabStrip) ?? true
         currentProfileID = try container.decodeIfPresent(UUID.self, forKey: .currentProfileID)
         enableWebInspectorInDebugBuilds =
             try container.decodeIfPresent(Bool.self, forKey: .enableWebInspectorInDebugBuilds) ?? true

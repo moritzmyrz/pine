@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 final class TabManager {
     private struct ClosedTabState {
@@ -62,6 +63,7 @@ final class TabManager {
 
         store.tabs.removeAll { $0.id == id }
         onTabRemoved?(id)
+        maintainSplitStateOnTabRemoval(closedTabID: id)
 
         if store.tabs.isEmpty {
             _ = newBlankTab(shouldSelect: true, isPrivate: false)
@@ -153,7 +155,7 @@ final class TabManager {
 
     func selectTab(atOneBasedIndex index: Int) {
         guard index >= 1, index <= store.tabs.count else { return }
-        store.setSelectedTabID(store.tabs[index - 1].id)
+        selectTab(id: store.tabs[index - 1].id)
     }
 
     func cycleTab(forward: Bool) {
@@ -163,12 +165,20 @@ final class TabManager {
         let nextIndex = forward
             ? (currentIndex + 1) % store.tabs.count
             : (currentIndex - 1 + store.tabs.count) % store.tabs.count
-        store.setSelectedTabID(store.tabs[nextIndex].id)
+        selectTab(id: store.tabs[nextIndex].id)
     }
 
     func selectTab(id: UUID) {
         guard store.tabs.contains(where: { $0.id == id }) else { return }
+        let previousPrimaryID = store.selectedTabID
         store.setSelectedTabID(id)
+        guard store.isSplitViewEnabled else { return }
+        if store.splitSecondaryTabID == id,
+           let previousPrimaryID,
+           previousPrimaryID != id,
+           store.tabs.contains(where: { $0.id == previousPrimaryID }) {
+            store.splitSecondaryTabID = previousPrimaryID
+        }
     }
 
     func closeCurrentTab() {
@@ -193,6 +203,121 @@ final class TabManager {
         store.normalizePinnedOrdering()
     }
 
+    func replaceAllTabs(with newTabs: [Tab], selectedTabID: UUID?) {
+        disableSplitView()
+        for tab in store.tabs {
+            onTabRemoved?(tab.id)
+        }
+        store.tabs = newTabs
+        store.normalizePinnedOrdering()
+
+        if store.tabs.isEmpty {
+            _ = newBlankTab(shouldSelect: true, isPrivate: false)
+            return
+        }
+
+        if let selectedTabID, store.tabs.contains(where: { $0.id == selectedTabID }) {
+            store.setSelectedTabID(selectedTabID)
+        } else {
+            store.setSelectedTabID(store.tabs.first?.id)
+        }
+
+        for tab in store.tabs {
+            onTabLoaded?(tab.id, tab.urlString)
+        }
+    }
+
+    func enableSplitView(withSecondaryTabID secondaryTabID: UUID) {
+        guard let primaryID = store.selectedTabID else { return }
+        guard secondaryTabID != primaryID else { return }
+        guard store.tabs.contains(where: { $0.id == secondaryTabID }) else { return }
+        store.isSplitViewEnabled = true
+        store.splitLayout = .vertical
+        store.splitSecondaryTabID = secondaryTabID
+        store.activePane = .primary
+    }
+
+    func disableSplitView() {
+        store.isSplitViewEnabled = false
+        store.splitSecondaryTabID = nil
+        store.activePane = .primary
+    }
+
+    func setSecondaryTab(id: UUID?) {
+        guard store.isSplitViewEnabled else {
+            store.splitSecondaryTabID = nil
+            return
+        }
+        guard let id else {
+            store.splitSecondaryTabID = nil
+            return
+        }
+        guard let primaryID = store.selectedTabID else { return }
+        guard id != primaryID else { return }
+        guard store.tabs.contains(where: { $0.id == id }) else { return }
+        store.splitSecondaryTabID = id
+    }
+
+    func swapSplitPanes() {
+        guard store.isSplitViewEnabled,
+              let primaryID = store.selectedTabID,
+              let secondaryID = store.splitSecondaryTabID,
+              store.tabs.contains(where: { $0.id == primaryID }),
+              store.tabs.contains(where: { $0.id == secondaryID }) else { return }
+        store.setSelectedTabID(secondaryID)
+        store.splitSecondaryTabID = primaryID
+    }
+
+    func setActivePane(_ pane: ActivePane) {
+        guard store.isSplitViewEnabled else {
+            store.activePane = .primary
+            return
+        }
+        if pane == .secondary,
+           let secondaryID = store.splitSecondaryTabID,
+           store.tabs.contains(where: { $0.id == secondaryID }) {
+            store.activePane = .secondary
+            return
+        }
+        store.activePane = .primary
+    }
+
+    func switchActivePane(forward: Bool) {
+        guard store.isSplitViewEnabled else {
+            store.activePane = .primary
+            return
+        }
+        let target: ActivePane = forward ? .secondary : .primary
+        setActivePane(target)
+    }
+
+    func setSplitRatio(_ ratio: CGFloat) {
+        store.setSplitRatio(ratio)
+    }
+
+    func resetSplitRatio() {
+        store.setSplitRatio(0.5)
+    }
+
+    func toggleSplitView() {
+        if store.isSplitViewEnabled {
+            disableSplitView()
+            return
+        }
+        guard let secondaryID = preferredSecondaryTabID() else {
+            let newTabID = newTab(
+                urlString: "https://example.com",
+                shouldSelect: false,
+                shouldLoad: true,
+                isPrivate: false,
+                profileID: store.currentProfileID
+            )
+            enableSplitView(withSecondaryTabID: newTabID)
+            return
+        }
+        enableSplitView(withSecondaryTabID: secondaryID)
+    }
+
     private func pushClosedTabState(for tab: Tab) {
         let title = tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayTitle = title.isEmpty ? "New Tab" : title
@@ -205,5 +330,46 @@ final class TabManager {
                 isPinned: tab.isPinned
             )
         )
+    }
+
+    private func preferredSecondaryTabID() -> UUID? {
+        guard let primaryID = store.selectedTabID else { return nil }
+        let candidates = store.tabs.filter { $0.id != primaryID }
+        guard !candidates.isEmpty else { return nil }
+        return candidates
+            .sorted { lhs, rhs in
+                (lhs.lastSelectedAt ?? .distantPast) > (rhs.lastSelectedAt ?? .distantPast)
+            }
+            .first?
+            .id
+    }
+
+    private func maintainSplitStateOnTabRemoval(closedTabID: UUID) {
+        guard store.isSplitViewEnabled else { return }
+        // Keep split mode only when two distinct tabs still exist.
+        // If only one tab remains, exiting split is less surprising than auto-creating tabs.
+        guard store.tabs.count >= 2 else {
+            disableSplitView()
+            return
+        }
+
+        if store.splitSecondaryTabID == closedTabID {
+            store.splitSecondaryTabID = preferredSecondaryTabID()
+            if store.splitSecondaryTabID == nil {
+                disableSplitView()
+            }
+            if store.activePane == .secondary {
+                store.activePane = .primary
+            }
+            return
+        }
+
+        if let selectedPrimaryID = store.selectedTabID,
+           store.splitSecondaryTabID == selectedPrimaryID {
+            store.splitSecondaryTabID = preferredSecondaryTabID()
+            if store.splitSecondaryTabID == nil {
+                disableSplitView()
+            }
+        }
     }
 }
