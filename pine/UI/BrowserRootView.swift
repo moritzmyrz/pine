@@ -6,7 +6,6 @@ struct BrowserRootView: View {
     @StateObject private var viewModel: BrowserViewModel
     @StateObject private var commandPaletteViewModel: CommandPaletteViewModel
     @StateObject private var addressBarViewModel: AddressBarViewModel
-    @State private var draggedTabID: UUID?
     @State private var observedWindowNumber: Int?
     @State private var isSiteSettingsPresented = false
     @State private var shouldRestoreAddressFocusAfterPalette = false
@@ -346,10 +345,7 @@ struct BrowserRootView: View {
     }
 
     private var tabStrip: some View {
-        BrowserCompactTabStripView(
-            viewModel: viewModel,
-            draggedTabID: $draggedTabID
-        )
+        BrowserCompactTabStripView(viewModel: viewModel)
     }
 
     private var profileDeleteConfirmationBinding: Binding<Bool> {

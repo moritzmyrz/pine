@@ -10,6 +10,12 @@ enum ActivePane {
     case secondary
 }
 
+enum SplitDropSide {
+    case none
+    case left
+    case right
+}
+
 final class BrowserStore: ObservableObject {
     static let minSplitRatio: CGFloat = 0.2
     static let maxSplitRatio: CGFloat = 0.8
@@ -46,6 +52,11 @@ final class BrowserStore: ObservableObject {
     @Published var isDownloadsShelfDismissed = false
     @Published var profilePendingDeletion: Profile?
     @Published var zenModeEnabled = false
+
+    @Published var isDraggingTab = false
+    @Published var draggedTabID: UUID?
+    @Published var currentDropTarget: UUID?
+    @Published var intendedSplitSide: SplitDropSide = .none
 
     var selectedTab: Tab? {
         guard let selectedTabID else { return nil }

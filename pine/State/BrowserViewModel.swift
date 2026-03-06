@@ -171,6 +171,15 @@ final class BrowserViewModel: ObservableObject {
     func closeTabsToRight(of id: UUID) { tabManager.closeTabsToRight(of: id) }
     func setTabPinned(id: UUID, isPinned: Bool) { tabManager.setTabPinned(id: id, isPinned: isPinned) }
     func reorderTab(draggedID: UUID, before targetID: UUID) { tabManager.reorderTab(draggedID: draggedID, before: targetID) }
+    func beginTabDrag(tabID: UUID) { tabManager.beginTabDrag(tabID: tabID) }
+    func updateTabDropContext(targetTabID: UUID?, splitSide: SplitDropSide) {
+        tabManager.updateTabDropContext(targetTabID: targetTabID, splitSide: splitSide)
+    }
+    func clearTabDropContext() { tabManager.clearTabDropContext() }
+    func dropDraggedTabOnTab(targetTabID: UUID) { tabManager.dropDraggedTabOnTab(targetTabID: targetTabID) }
+    func dropDraggedTabOnSplitSide(targetTabID: UUID, splitSide: SplitDropSide) {
+        tabManager.dropDraggedTabOnSplitSide(targetTabID: targetTabID, splitSide: splitSide)
+    }
     func selectTab(atOneBasedIndex index: Int) { tabManager.selectTab(atOneBasedIndex: index) }
     func cycleTab(forward: Bool) { tabManager.cycleTab(forward: forward) }
     func closeCurrentTab() {
