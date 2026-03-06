@@ -141,21 +141,40 @@ struct BrowserRootView: View {
            primaryTabID != secondaryTabID,
            viewModel.tabs.contains(where: { $0.id == primaryTabID }),
            viewModel.tabs.contains(where: { $0.id == secondaryTabID }) {
-            HStack(spacing: 0) {
-                tabContent(tabID: primaryTabID)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                Divider()
-                ZStack(alignment: .topLeading) {
-                    tabContent(tabID: secondaryTabID)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    SplitViewControls(
-                        viewModel: viewModel,
-                        primaryTabID: primaryTabID,
-                        secondaryTabID: secondaryTabID
-                    )
-                    .padding(8)
+            GeometryReader { geometry in
+                let dividerWidth: CGFloat = 8
+                let availableWidth = max(geometry.size.width - dividerWidth, 1)
+                let primaryWidth = availableWidth * viewModel.splitRatio
+                let secondaryWidth = availableWidth - primaryWidth
+
+                HStack(spacing: 0) {
+                    paneContainer(tabID: primaryTabID, pane: .primary)
+                        .frame(width: primaryWidth)
+                        .frame(maxHeight: .infinity)
+
+                    SplitResizeDivider {
+                        // Keep drag logic in one place and clamp in store.
+                        let draggedRatio = $0 / availableWidth
+                        viewModel.setSplitRatio(draggedRatio)
+                    }
+                    .frame(width: dividerWidth)
+                    .frame(maxHeight: .infinity)
+
+                    ZStack(alignment: .topLeading) {
+                        paneContainer(tabID: secondaryTabID, pane: .secondary)
+                            .frame(width: secondaryWidth)
+                            .frame(maxHeight: .infinity)
+                        SplitViewControls(
+                            viewModel: viewModel,
+                            primaryTabID: primaryTabID,
+                            secondaryTabID: secondaryTabID
+                        )
+                        .padding(8)
+                    }
+                    .frame(width: secondaryWidth)
+                    .frame(maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .coordinateSpace(name: "splitContainer")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let selectedTab = viewModel.selectedTab {
@@ -182,14 +201,40 @@ struct BrowserRootView: View {
         if let tab = viewModel.tabs.first(where: { $0.id == tabID }), tab.urlString == "about:blank" {
             blankTabState
         } else {
-            WebViewContainer(viewModel: viewModel, tabID: tabID)
+            WebViewContainer(
+                viewModel: viewModel,
+                tabID: tabID,
+                onActivate: {
+                    if viewModel.isSplitViewEnabled,
+                       let primaryTabID = viewModel.splitPrimaryTabID,
+                       tabID != primaryTabID {
+                        viewModel.setActivePane(.secondary)
+                    } else {
+                        viewModel.setActivePane(.primary)
+                    }
+                }
+            )
                 .id(tabID)
         }
     }
 
+    private func paneContainer(tabID: UUID, pane: ActivePane) -> some View {
+        tabContent(tabID: tabID)
+            .overlay {
+                RoundedRectangle(cornerRadius: 0)
+                    .stroke(
+                        pane == viewModel.activePane ? Color.accentColor.opacity(0.22) : Color.clear,
+                        lineWidth: 1
+                    )
+            }
+            .onTapGesture {
+                viewModel.setActivePane(pane)
+            }
+    }
+
     @ViewBuilder
     private var loadingProgressBar: some View {
-        if let tab = viewModel.selectedTab, tab.isLoading {
+        if let tab = viewModel.activeTab, tab.isLoading {
             ProgressView(value: tab.estimatedProgress)
                 .progressViewStyle(.linear)
                 .frame(maxWidth: .infinity)
@@ -199,7 +244,7 @@ struct BrowserRootView: View {
     }
 
     private var blankTabState: some View {
-        let profileLabel = viewModel.selectedTab.map { viewModel.profileName(for: $0.profileID) } ?? "Unknown"
+        let profileLabel = viewModel.activeTab.map { viewModel.profileName(for: $0.profileID) } ?? "Unknown"
         return VStack(spacing: 8) {
             Text("New Tab")
                 .font(.title2)
@@ -434,11 +479,33 @@ struct BrowserRootView: View {
     }
 
     private var currentTabURL: String {
-        viewModel.selectedTab?.urlString ?? ""
+        viewModel.activeTab?.urlString ?? ""
     }
 
     private func submitAddressBar() {
         viewModel.loadSelectedTab(from: addressInput)
+    }
+}
+
+private struct SplitResizeDivider: View {
+    let onDragToX: (CGFloat) -> Void
+
+    var body: some View {
+        ZStack {
+            Color.clear
+            Rectangle()
+                .fill(Color.primary.opacity(0.14))
+                .frame(width: 1)
+        }
+        .contentShape(Rectangle())
+        .gesture(onDragGesture)
+    }
+
+    private var onDragGesture: some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .named("splitContainer"))
+            .onChanged { value in
+                onDragToX(value.location.x)
+            }
     }
 }
 

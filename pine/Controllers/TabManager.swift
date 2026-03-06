@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 final class TabManager {
     private struct ClosedTabState {
@@ -233,11 +234,13 @@ final class TabManager {
         store.isSplitViewEnabled = true
         store.splitLayout = .vertical
         store.splitSecondaryTabID = secondaryTabID
+        store.activePane = .primary
     }
 
     func disableSplitView() {
         store.isSplitViewEnabled = false
         store.splitSecondaryTabID = nil
+        store.activePane = .primary
     }
 
     func setSecondaryTab(id: UUID?) {
@@ -263,6 +266,37 @@ final class TabManager {
               store.tabs.contains(where: { $0.id == secondaryID }) else { return }
         store.setSelectedTabID(secondaryID)
         store.splitSecondaryTabID = primaryID
+    }
+
+    func setActivePane(_ pane: ActivePane) {
+        guard store.isSplitViewEnabled else {
+            store.activePane = .primary
+            return
+        }
+        if pane == .secondary,
+           let secondaryID = store.splitSecondaryTabID,
+           store.tabs.contains(where: { $0.id == secondaryID }) {
+            store.activePane = .secondary
+            return
+        }
+        store.activePane = .primary
+    }
+
+    func switchActivePane(forward: Bool) {
+        guard store.isSplitViewEnabled else {
+            store.activePane = .primary
+            return
+        }
+        let target: ActivePane = forward ? .secondary : .primary
+        setActivePane(target)
+    }
+
+    func setSplitRatio(_ ratio: CGFloat) {
+        store.setSplitRatio(ratio)
+    }
+
+    func resetSplitRatio() {
+        store.setSplitRatio(0.5)
     }
 
     func toggleSplitView() {
@@ -323,6 +357,9 @@ final class TabManager {
             store.splitSecondaryTabID = preferredSecondaryTabID()
             if store.splitSecondaryTabID == nil {
                 disableSplitView()
+            }
+            if store.activePane == .secondary {
+                store.activePane = .primary
             }
             return
         }

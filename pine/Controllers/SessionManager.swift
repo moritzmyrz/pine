@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 final class SessionManager {
     private let store: BrowserStore
@@ -44,6 +45,21 @@ final class SessionManager {
         } else {
             store.setSelectedTabID(store.tabs.first?.id)
         }
+
+        if savedSession.isSplitViewEnabled,
+           let selectedTabID = store.selectedTabID,
+           let splitSecondaryTabID = savedSession.splitSecondaryTabID,
+           splitSecondaryTabID != selectedTabID,
+           store.tabs.contains(where: { $0.id == splitSecondaryTabID }) {
+            store.isSplitViewEnabled = true
+            store.splitSecondaryTabID = splitSecondaryTabID
+            store.activePane = (savedSession.activePaneRawValue == "secondary") ? .secondary : .primary
+        } else {
+            store.isSplitViewEnabled = false
+            store.splitSecondaryTabID = nil
+            store.activePane = .primary
+        }
+        store.setSplitRatio(CGFloat(savedSession.splitRatio))
 
         for tab in store.tabs {
             onTabNeedsLoad(tab.id, tab.urlString)
@@ -94,6 +110,10 @@ final class SessionManager {
         let snapshot = BrowserSessionSnapshot(
             tabs: persistedTabs,
             selectedTabID: store.selectedTabID,
+            isSplitViewEnabled: store.isSplitViewEnabled,
+            splitSecondaryTabID: store.splitSecondaryTabID,
+            activePaneRawValue: (store.activePane == .secondary) ? "secondary" : "primary",
+            splitRatio: Double(store.splitRatio),
             savedAt: now
         )
         sessionStore.saveSession(snapshot)

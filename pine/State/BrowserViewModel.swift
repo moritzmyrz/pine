@@ -29,6 +29,8 @@ final class BrowserViewModel: ObservableObject {
     var isSplitViewEnabled: Bool { store.isSplitViewEnabled }
     var splitSecondaryTabID: UUID? { store.splitSecondaryTabID }
     var splitPrimaryTabID: UUID? { store.splitPrimaryTabID }
+    var activePane: ActivePane { store.activePane }
+    var splitRatio: CGFloat { store.splitRatio }
     var profiles: [Profile] { store.profiles }
     var currentProfileID: UUID { store.currentProfileID }
     var workspaces: [Workspace] { store.workspaces }
@@ -39,6 +41,10 @@ final class BrowserViewModel: ObservableObject {
     var addressBarFocusToken: UUID { store.addressBarFocusToken }
     var shouldSelectAllInAddressBar: Bool { store.shouldSelectAllInAddressBar }
     var selectedTab: Tab? { store.selectedTab }
+    var activeTab: Tab? {
+        guard let activeID = activeNavigationTabID else { return store.selectedTab }
+        return store.tabs.first(where: { $0.id == activeID })
+    }
     var sortedTabs: [Tab] { store.sortedTabs }
     var currentProfile: Profile? { store.currentProfile }
 
@@ -157,6 +163,10 @@ final class BrowserViewModel: ObservableObject {
     func disableSplitView() { tabManager.disableSplitView() }
     func setSecondaryTab(id: UUID?) { tabManager.setSecondaryTab(id: id) }
     func swapSplitPanes() { tabManager.swapSplitPanes() }
+    func setActivePane(_ pane: ActivePane) { tabManager.setActivePane(pane) }
+    func switchActivePane(forward: Bool) { tabManager.switchActivePane(forward: forward) }
+    func setSplitRatio(_ ratio: CGFloat) { tabManager.setSplitRatio(ratio) }
+    func resetSplitRatio() { tabManager.resetSplitRatio() }
 
     func tabsMatching(query: String) -> [Tab] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -223,12 +233,30 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func webView(for tabID: UUID) -> WKWebView { navigationController.webView(for: tabID) }
-    func loadSelectedTab() { navigationController.loadSelectedTab() }
-    func loadSelectedTab(from urlInput: String) { navigationController.loadSelectedTab(from: urlInput) }
-    func goBackSelectedTab() { navigationController.goBackSelectedTab() }
-    func goForwardSelectedTab() { navigationController.goForwardSelectedTab() }
-    func reloadSelectedTab() { navigationController.reloadSelectedTab() }
-    func stopLoadingSelectedTab() { navigationController.stopLoadingSelectedTab() }
+    func loadSelectedTab() {
+        guard let activeTabID = activeNavigationTabID else { return }
+        navigationController.loadURL(activeTabURLString(for: activeTabID), in: activeTabID)
+    }
+    func loadSelectedTab(from urlInput: String) {
+        guard let activeTabID = activeNavigationTabID else { return }
+        navigationController.loadTab(tabID: activeTabID, from: urlInput)
+    }
+    func goBackSelectedTab() {
+        guard let activeTabID = activeNavigationTabID else { return }
+        navigationController.goBack(tabID: activeTabID)
+    }
+    func goForwardSelectedTab() {
+        guard let activeTabID = activeNavigationTabID else { return }
+        navigationController.goForward(tabID: activeTabID)
+    }
+    func reloadSelectedTab() {
+        guard let activeTabID = activeNavigationTabID else { return }
+        navigationController.reload(tabID: activeTabID)
+    }
+    func stopLoadingSelectedTab() {
+        guard let activeTabID = activeNavigationTabID else { return }
+        navigationController.stopLoading(tabID: activeTabID)
+    }
     func zoomInSelectedTab() { navigationController.zoomInSelectedTab() }
     func zoomOutSelectedTab() { navigationController.zoomOutSelectedTab() }
     func resetZoomSelectedTab() { navigationController.resetZoomSelectedTab() }
@@ -374,6 +402,18 @@ final class BrowserViewModel: ObservableObject {
         NotificationCenter.default.publisher(for: .pineToggleSplitView)
             .sink { [weak self] _ in self?.toggleSplitView() }
             .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineSwitchActivePaneLeft)
+            .sink { [weak self] _ in self?.switchActivePane(forward: false) }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineSwitchActivePaneRight)
+            .sink { [weak self] _ in self?.switchActivePane(forward: true) }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineSwapSplitPanes)
+            .sink { [weak self] _ in self?.swapSplitPanes() }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineResetSplitDivider)
+            .sink { [weak self] _ in self?.resetSplitRatio() }
+            .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
             .sink { [weak self] _ in self?.sessionManager.persistSession() }
@@ -382,5 +422,19 @@ final class BrowserViewModel: ObservableObject {
             .autoconnect()
             .sink { [weak self] _ in self?.sessionManager.persistSession() }
             .store(in: &cancellables)
+    }
+
+    private var activeNavigationTabID: UUID? {
+        if store.isSplitViewEnabled,
+           store.activePane == .secondary,
+           let secondaryID = store.splitSecondaryTabID,
+           store.tabs.contains(where: { $0.id == secondaryID }) {
+            return secondaryID
+        }
+        return store.selectedTabID
+    }
+
+    private func activeTabURLString(for tabID: UUID) -> String {
+        store.tabs.first(where: { $0.id == tabID })?.urlString ?? ""
     }
 }

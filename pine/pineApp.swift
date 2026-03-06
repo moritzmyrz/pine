@@ -142,6 +142,28 @@ struct pineApp: App {
                     NotificationCenter.default.post(name: .pineToggleSplitView, object: nil)
                 }
                 .keyboardShortcut("\\", modifiers: .command)
+
+                Button("Focus Left Pane") {
+                    NotificationCenter.default.post(name: .pineSwitchActivePaneLeft, object: nil)
+                }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+
+                Button("Focus Right Pane") {
+                    NotificationCenter.default.post(name: .pineSwitchActivePaneRight, object: nil)
+                }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+
+                Button("Swap Split Panes") {
+                    NotificationCenter.default.post(name: .pineSwapSplitPanes, object: nil)
+                }
+                .keyboardShortcut("\\", modifiers: [.command, .shift])
+
+                Button("Reset Split Divider") {
+                    NotificationCenter.default.post(name: .pineResetSplitDivider, object: nil)
+                }
+
+                Button("Flip Split Orientation") {}
+                    .disabled(true)
             }
         }
     }

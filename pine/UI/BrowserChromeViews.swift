@@ -32,7 +32,7 @@ struct BrowserTopBar: View {
         } label: {
             Image(systemName: "chevron.left")
         }
-        .disabled(!(viewModel.selectedTab?.canGoBack ?? false))
+        .disabled(!(viewModel.activeTab?.canGoBack ?? false))
         .help("Back")
     }
 
@@ -42,21 +42,21 @@ struct BrowserTopBar: View {
         } label: {
             Image(systemName: "chevron.right")
         }
-        .disabled(!(viewModel.selectedTab?.canGoForward ?? false))
+        .disabled(!(viewModel.activeTab?.canGoForward ?? false))
         .help("Forward")
     }
 
     private var reloadStopButton: some View {
         Button {
-            if viewModel.selectedTab?.isLoading == true {
+            if viewModel.activeTab?.isLoading == true {
                 viewModel.stopLoadingSelectedTab()
             } else {
                 viewModel.reloadSelectedTab()
             }
         } label: {
-            Image(systemName: (viewModel.selectedTab?.isLoading == true) ? "xmark" : "arrow.clockwise")
+            Image(systemName: (viewModel.activeTab?.isLoading == true) ? "xmark" : "arrow.clockwise")
         }
-        .help((viewModel.selectedTab?.isLoading == true) ? "Stop Loading" : "Reload")
+        .help((viewModel.activeTab?.isLoading == true) ? "Stop Loading" : "Reload")
     }
 
     private var addressField: some View {
@@ -249,7 +249,7 @@ struct BrowserTopBar: View {
     }
 
     private var selectedFavicon: NSImage? {
-        guard let data = viewModel.selectedTab?.faviconData else { return nil }
+        guard let data = viewModel.activeTab?.faviconData else { return nil }
         return NSImage(data: data)
     }
 
@@ -258,7 +258,7 @@ struct BrowserTopBar: View {
     }
 
     private var siteLockSymbol: String {
-        guard let urlString = viewModel.selectedTab?.urlString,
+        guard let urlString = viewModel.activeTab?.urlString,
               let scheme = URL(string: urlString)?.scheme?.lowercased() else {
             return "lock.open"
         }
@@ -266,7 +266,7 @@ struct BrowserTopBar: View {
     }
 
     private var readerModeButtonTitle: String {
-        (viewModel.selectedTab?.isReaderModeEnabled == true) ? "Disable Reader Mode (Lite)" : "Enable Reader Mode (Lite)"
+        (viewModel.activeTab?.isReaderModeEnabled == true) ? "Disable Reader Mode (Lite)" : "Enable Reader Mode (Lite)"
     }
 
     private var restoreSessionMenuTitle: String {
