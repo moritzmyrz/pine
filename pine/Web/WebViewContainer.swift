@@ -68,8 +68,17 @@ struct WebViewContainer: NSViewRepresentable {
             }
 
             if navigationAction.targetFrame == nil {
-                viewModel.openInNewTab(request: navigationAction.request, fromTabID: tabID)
-                decisionHandler(.cancel)
+                let popupHost = navigationAction.request.url?.host?.lowercased()
+                viewModel.shouldAllowPermissionRequest(type: .popups, host: popupHost) { [weak self] allowPopup in
+                    guard let self else {
+                        decisionHandler(.cancel)
+                        return
+                    }
+                    if allowPopup {
+                        self.viewModel.openInNewTab(request: navigationAction.request, fromTabID: self.tabID)
+                    }
+                    decisionHandler(.cancel)
+                }
                 return
             }
 
@@ -95,7 +104,12 @@ struct WebViewContainer: NSViewRepresentable {
             didBecome download: WKDownload
         ) {
             let suggestedFilename = navigationAction.request.url?.lastPathComponent ?? "download"
-            viewModel.downloadManager.track(download: download, suggestedFilename: suggestedFilename)
+            viewModel.downloadManager.track(
+                download: download,
+                webView: webView,
+                suggestedFilename: suggestedFilename,
+                sourceURL: navigationAction.request.url
+            )
             download.delegate = self
         }
 
@@ -105,7 +119,12 @@ struct WebViewContainer: NSViewRepresentable {
             didBecome download: WKDownload
         ) {
             let suggestedFilename = navigationResponse.response.suggestedFilename ?? "download"
-            viewModel.downloadManager.track(download: download, suggestedFilename: suggestedFilename)
+            viewModel.downloadManager.track(
+                download: download,
+                webView: webView,
+                suggestedFilename: suggestedFilename,
+                sourceURL: navigationResponse.response.url
+            )
             download.delegate = self
         }
 
@@ -126,7 +145,54 @@ struct WebViewContainer: NSViewRepresentable {
         }
 
         func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
-            viewModel.downloadManager.didFail(download: download, error: error)
+            viewModel.downloadManager.didFail(download: download, error: error, resumeData: resumeData)
+        }
+
+        @available(macOS 12.0, *)
+        func webView(
+            _ webView: WKWebView,
+            requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+            initiatedByFrame frame: WKFrameInfo,
+            type: WKMediaCaptureType,
+            decisionHandler: @escaping (WKPermissionDecision) -> Void
+        ) {
+            let permissionType: SitePermissionType
+            switch type {
+            case .camera:
+                permissionType = .camera
+            case .microphone:
+                permissionType = .microphone
+            case .cameraAndMicrophone:
+                permissionType = .camera
+            @unknown default:
+                permissionType = .camera
+            }
+            viewModel.shouldAllowPermissionRequest(type: permissionType, host: origin.host) { isAllowed in
+                decisionHandler(isAllowed ? .grant : .deny)
+            }
+        }
+
+        @available(macOS 13.0, *)
+        func webView(
+            _ webView: WKWebView,
+            requestGeolocationPermissionForFrame frame: WKFrameInfo,
+            decisionHandler: @escaping (WKPermissionDecision) -> Void
+        ) {
+            let host = frame.request.url?.host?.lowercased()
+            viewModel.shouldAllowPermissionRequest(type: .location, host: host) { isAllowed in
+                decisionHandler(isAllowed ? .grant : .deny)
+            }
+        }
+
+        @available(macOS 13.0, *)
+        func webView(
+            _ webView: WKWebView,
+            requestNotificationPermissionFor securityOrigin: WKSecurityOrigin,
+            decisionHandler: @escaping (WKPermissionDecision) -> Void
+        ) {
+            viewModel.shouldAllowPermissionRequest(type: .notifications, host: securityOrigin.host) { isAllowed in
+                decisionHandler(isAllowed ? .grant : .deny)
+            }
         }
     }
 }

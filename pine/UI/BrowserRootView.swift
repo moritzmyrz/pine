@@ -102,6 +102,14 @@ struct BrowserRootView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+
+                if viewModel.downloadManager.shouldShowShelf {
+                    Divider()
+                    DownloadsShelfView(
+                        downloadManager: viewModel.downloadManager,
+                        openDownloadsSheet: { isDownloadsPresented = true }
+                    )
+                }
             }
             .toolbar {
                 ToolbarItemGroup {
@@ -612,28 +620,107 @@ private struct DownloadsSheetView: View {
     var body: some View {
         NavigationStack {
             List(downloadManager.items) { item in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(item.filename)
-                        .lineLimit(1)
-                    if let destination = item.destination {
-                        Text(destination.path)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    HStack(spacing: 8) {
-                        ProgressView(value: item.progress)
-                            .frame(maxWidth: .infinity)
-                        Text(item.status.rawValue.capitalized)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 2)
+                DownloadRowView(downloadManager: downloadManager, item: item, compact: false)
             }
             .navigationTitle("Downloads")
         }
         .frame(minWidth: 560, minHeight: 360)
+    }
+}
+
+private struct DownloadsShelfView: View {
+    @ObservedObject var downloadManager: DownloadManager
+    let openDownloadsSheet: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("Downloads")
+                .font(.subheadline.weight(.semibold))
+
+            ForEach(downloadManager.shelfItems) { item in
+                DownloadRowView(downloadManager: downloadManager, item: item, compact: true)
+                    .frame(maxWidth: 280)
+            }
+
+            Spacer(minLength: 0)
+
+            Button("Show All") {
+                openDownloadsSheet()
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
+    }
+}
+
+private struct DownloadRowView: View {
+    @ObservedObject var downloadManager: DownloadManager
+    let item: DownloadItem
+    let compact: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 4 : 6) {
+            HStack(spacing: 6) {
+                Text(item.filename)
+                    .font(compact ? .caption : .body)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text(item.status.rawValue.capitalized)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            ProgressView(value: item.progress)
+                .frame(maxWidth: .infinity)
+
+            if !compact, let destination = item.destination {
+                Text(destination.path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            if let errorDescription = item.errorDescription, !errorDescription.isEmpty {
+                Text(errorDescription)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
+
+            HStack(spacing: 8) {
+                if downloadManager.canPause(item) {
+                    Button("Pause") {
+                        downloadManager.pause(itemID: item.id)
+                    }
+                } else if downloadManager.canResume(item) {
+                    Button("Resume") {
+                        downloadManager.resume(itemID: item.id)
+                    }
+                }
+
+                if downloadManager.canCancel(item) {
+                    Button("Cancel") {
+                        downloadManager.cancel(itemID: item.id)
+                    }
+                }
+
+                Button("Reveal") {
+                    downloadManager.revealInFinder(itemID: item.id)
+                }
+                .disabled(!downloadManager.canReveal(item))
+
+                Button("Retry") {
+                    downloadManager.retry(itemID: item.id)
+                }
+                .disabled(!downloadManager.canRetry(item))
+            }
+            .font(.caption)
+        }
+        .padding(compact ? 8 : 4)
+        .background(compact ? Color.gray.opacity(0.1) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -721,6 +808,51 @@ private struct SettingsSheetView: View {
                     Text("Some sites only show AutoFill after selecting a username/password field directly.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                }
+
+                Section("Site Permissions Defaults") {
+                    Toggle("Block pop-ups by default", isOn: Binding(
+                        get: { viewModel.permissionDefaults.blockPopupsByDefault },
+                        set: { viewModel.setBlockPopupsByDefault($0) }
+                    ))
+                    Toggle("Ask for camera and microphone always", isOn: Binding(
+                        get: { viewModel.permissionDefaults.askForCameraAndMicrophoneAlways },
+                        set: { viewModel.setAskCameraAndMicrophoneAlways($0) }
+                    ))
+                }
+
+                Section("Privacy") {
+                    Picker("Tracker blocking", selection: Binding(
+                        get: { viewModel.trackerBlockingMode },
+                        set: { viewModel.setTrackerBlockingMode($0) }
+                    )) {
+                        ForEach(TrackerBlockingMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    Text("Basic mode uses a conservative built-in WebKit rule list to block common third-party trackers.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Downloads") {
+                    Toggle("Ask where to save each file", isOn: Binding(
+                        get: { viewModel.downloadManager.askWhereToSaveEachFile },
+                        set: { viewModel.downloadManager.setAskWhereToSaveEachFile($0) }
+                    ))
+
+                    if !viewModel.downloadManager.askWhereToSaveEachFile {
+                        HStack {
+                            Text(viewModel.downloadManager.defaultDownloadFolder.path)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer()
+                            Button("Choose Folder...") {
+                                viewModel.downloadManager.pickDefaultDownloadFolder()
+                            }
+                        }
+                    }
                 }
             }
             .formStyle(.grouped)

@@ -9,6 +9,8 @@ final class BrowserViewModel: ObservableObject {
     @Published var profiles: [Profile]
     @Published var currentProfileID: UUID
     @Published var sessionSettings: BrowserSettings
+    @Published var permissionDefaults: PermissionDefaults
+    @Published var trackerBlockingMode: TrackerBlockingMode
     @Published var addressBarFocusToken = UUID()
     @Published private(set) var shouldSelectAllInAddressBar = false
     let historyStore: HistoryStore
@@ -16,6 +18,8 @@ final class BrowserViewModel: ObservableObject {
     let downloadManager: DownloadManager
     let sessionStore: SessionStore
     let profileStore: ProfileStore
+    let sitePermissionsStore: SitePermissionsStore
+    let contentBlockerService: ContentBlockerService
 
     // Keep WKWebView instances in the view model so Tab stays plain state data.
     // This works well with SwiftUI value-driven updates on macOS.
@@ -24,6 +28,7 @@ final class BrowserViewModel: ObservableObject {
     private var faviconCacheByHost: [String: Data] = [:]
     private var faviconTasks: [UUID: URLSessionDataTask] = [:]
     private var closedTabsStack: [ClosedTabState] = []
+    private var sitePermissionsByHost: [String: SitePermissionEntry]
     private var cancellables: Set<AnyCancellable> = []
 
     private struct ClosedTabState {
@@ -70,15 +75,22 @@ final class BrowserViewModel: ObservableObject {
         bookmarksStore: BookmarksStore = BookmarksStore(),
         downloadManager: DownloadManager = DownloadManager(),
         sessionStore: SessionStore = SessionStore(),
-        profileStore: ProfileStore = ProfileStore()
+        profileStore: ProfileStore = ProfileStore(),
+        sitePermissionsStore: SitePermissionsStore = SitePermissionsStore(),
+        contentBlockerService: ContentBlockerService = ContentBlockerService()
     ) {
         self.historyStore = historyStore
         self.bookmarksStore = bookmarksStore
         self.downloadManager = downloadManager
         self.sessionStore = sessionStore
         self.profileStore = profileStore
+        self.sitePermissionsStore = sitePermissionsStore
+        self.contentBlockerService = contentBlockerService
         tabs = []
         selectedTabID = nil
+        permissionDefaults = sitePermissionsStore.loadPermissionDefaults()
+        trackerBlockingMode = contentBlockerService.mode
+        sitePermissionsByHost = sitePermissionsStore.loadSitePermissions()
         let initialSettings = sessionStore.loadSettings()
         sessionSettings = initialSettings
         let loadedProfiles = profileStore.loadProfiles()
@@ -229,6 +241,20 @@ final class BrowserViewModel: ObservableObject {
                 self?.persistSession()
             }
             .store(in: &cancellables)
+
+        contentBlockerService.$mode
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] mode in
+                self?.trackerBlockingMode = mode
+                self?.applyContentBlockingToAllWebViews()
+            }
+            .store(in: &cancellables)
+
+        contentBlockerService.onRuleListDidChange = { [weak self] in
+            DispatchQueue.main.async {
+                self?.applyContentBlockingToAllWebViews()
+            }
+        }
     }
 
     deinit {
@@ -593,6 +619,89 @@ final class BrowserViewModel: ObservableObject {
         shouldSelectAllInAddressBar = false
     }
 
+    func currentSiteHost() -> String? {
+        guard let selectedTab else { return nil }
+        return host(from: selectedTab.urlString)
+    }
+
+    func permissionValue(for type: SitePermissionType, host: String) -> SitePermissionValue {
+        let normalized = normalizedHost(host)
+        if let entry = sitePermissionsByHost[normalized] {
+            return entry.value(for: type)
+        }
+        return defaultPermissionValue(for: type)
+    }
+
+    func setPermissionValue(_ value: SitePermissionValue, for type: SitePermissionType, host: String) {
+        let normalized = normalizedHost(host)
+        var entry = sitePermissionsByHost[normalized] ?? SitePermissionEntry.default
+        entry.setValue(value, for: type)
+        sitePermissionsByHost[normalized] = entry
+        sitePermissionsStore.saveSitePermissions(sitePermissionsByHost)
+        objectWillChange.send()
+    }
+
+    func setBlockPopupsByDefault(_ enabled: Bool) {
+        permissionDefaults.blockPopupsByDefault = enabled
+        sitePermissionsStore.savePermissionDefaults(permissionDefaults)
+    }
+
+    func setAskCameraAndMicrophoneAlways(_ enabled: Bool) {
+        permissionDefaults.askForCameraAndMicrophoneAlways = enabled
+        sitePermissionsStore.savePermissionDefaults(permissionDefaults)
+    }
+
+    func setTrackerBlockingMode(_ mode: TrackerBlockingMode) {
+        contentBlockerService.setMode(mode)
+    }
+
+    func shouldAllowPermissionRequest(
+        type: SitePermissionType,
+        host: String?,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard let host, !host.isEmpty else {
+            completion(false)
+            return
+        }
+
+        let resolved = permissionValue(for: type, host: host)
+        if resolved == .block {
+            completion(false)
+            return
+        }
+
+        let shouldAlwaysAskCameraMic = permissionDefaults.askForCameraAndMicrophoneAlways &&
+            (type == .camera || type == .microphone)
+
+        if resolved == .allow, !shouldAlwaysAskCameraMic {
+            completion(true)
+            return
+        }
+
+        presentPermissionPrompt(for: type, host: host, completion: completion)
+    }
+
+    func clearWebsiteData(for host: String, completion: (() -> Void)? = nil) {
+        guard let selectedTabID else {
+            completion?()
+            return
+        }
+        let webView = webView(for: selectedTabID)
+        let dataStore = webView.configuration.websiteDataStore
+        let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+        dataStore.fetchDataRecords(ofTypes: dataTypes) { records in
+            let loweredHost = host.lowercased()
+            let matchingRecords = records.filter { record in
+                let displayName = record.displayName.lowercased()
+                return displayName == loweredHost || displayName.contains(loweredHost) || loweredHost.contains(displayName)
+            }
+            dataStore.removeData(ofTypes: dataTypes, for: matchingRecords) {
+                completion?()
+            }
+        }
+    }
+
     func webView(for tabID: UUID) -> WKWebView {
         if let webView = webViews[tabID] {
             applyStoredPageSettings(for: tabID, in: webView)
@@ -601,6 +710,7 @@ final class BrowserViewModel: ObservableObject {
 
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        contentBlockerService.apply(to: configuration.userContentController)
         if let tab = tabs.first(where: { $0.id == tabID }), tab.isPrivate {
             configuration.websiteDataStore = .nonPersistent()
         } else if let tab = tabs.first(where: { $0.id == tabID }) {
@@ -989,6 +1099,73 @@ final class BrowserViewModel: ObservableObject {
         URL(string: urlString)?.host?.lowercased()
     }
 
+    private func normalizedHost(_ host: String) -> String {
+        host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func defaultPermissionValue(for type: SitePermissionType) -> SitePermissionValue {
+        if type == .popups, permissionDefaults.blockPopupsByDefault {
+            return .block
+        }
+        return .ask
+    }
+
+    private func presentPermissionPrompt(
+        for type: SitePermissionType,
+        host: String,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let runPrompt = {
+            let alert = NSAlert()
+            alert.messageText = self.permissionPromptTitle(for: type)
+            alert.informativeText = "\(host) wants to use \(type.title.lowercased())."
+            alert.addButton(withTitle: "Allow Once")
+            alert.addButton(withTitle: "Allow Always")
+            alert.addButton(withTitle: "Block")
+            alert.alertStyle = .informational
+
+            let handleResponse: (NSApplication.ModalResponse) -> Void = { response in
+                switch response {
+                case .alertFirstButtonReturn:
+                    completion(true)
+                case .alertSecondButtonReturn:
+                    self.setPermissionValue(.allow, for: type, host: host)
+                    completion(true)
+                default:
+                    self.setPermissionValue(.block, for: type, host: host)
+                    completion(false)
+                }
+            }
+
+            if let keyWindow = NSApp.keyWindow {
+                alert.beginSheetModal(for: keyWindow, completionHandler: handleResponse)
+            } else {
+                handleResponse(alert.runModal())
+            }
+        }
+
+        if Thread.isMainThread {
+            runPrompt()
+        } else {
+            DispatchQueue.main.async(execute: runPrompt)
+        }
+    }
+
+    private func permissionPromptTitle(for type: SitePermissionType) -> String {
+        switch type {
+        case .camera:
+            return "Allow Camera Access?"
+        case .microphone:
+            return "Allow Microphone Access?"
+        case .location:
+            return "Allow Location Access?"
+        case .notifications:
+            return "Allow Notifications?"
+        case .popups:
+            return "Allow Pop-up Window?"
+        }
+    }
+
     private func persistSession() {
         guard sessionSettings.restorePreviousSession else { return }
         let now = Date()
@@ -1104,5 +1281,11 @@ final class BrowserViewModel: ObservableObject {
         let pinnedTabs = tabs.filter(\.isPinned)
         let unpinnedTabs = tabs.filter { !$0.isPinned }
         tabs = pinnedTabs + unpinnedTabs
+    }
+
+    private func applyContentBlockingToAllWebViews() {
+        for webView in webViews.values {
+            contentBlockerService.apply(to: webView.configuration.userContentController)
+        }
     }
 }
