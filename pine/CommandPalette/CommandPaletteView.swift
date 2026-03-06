@@ -57,14 +57,22 @@ struct CommandPaletteView: View {
 
             Divider()
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    section(kind: .tab, title: "Tabs")
-                    section(kind: .history, title: "History")
-                    section(kind: .bookmark, title: "Bookmarks")
-                    section(kind: .command, title: "Commands")
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        section(kind: .tab, title: "Tabs")
+                        section(kind: .history, title: "History")
+                        section(kind: .bookmark, title: "Bookmarks")
+                        section(kind: .command, title: "Commands")
+                    }
+                    .padding(.vertical, 8)
                 }
-                .padding(.vertical, 8)
+                .onChange(of: viewModel.selectedIndex) {
+                    scrollToSelectedResult(using: proxy)
+                }
+                .onChange(of: viewModel.results.map(\.id)) {
+                    scrollToSelectedResult(using: proxy)
+                }
             }
             .frame(maxHeight: 360)
 
@@ -162,6 +170,7 @@ struct CommandPaletteView: View {
             .padding(.horizontal, 6)
         }
         .buttonStyle(.plain)
+        .id(item.id)
     }
 
     private func handleMoveCommand(_ direction: MoveCommandDirection) {
@@ -190,6 +199,14 @@ struct CommandPaletteView: View {
 
     private func shouldOpenInNewTab() -> Bool {
         NSEvent.modifierFlags.contains(.option)
+    }
+
+    private func scrollToSelectedResult(using proxy: ScrollViewProxy) {
+        guard viewModel.selectedIndex >= 0, viewModel.selectedIndex < viewModel.results.count else { return }
+        let selectedID = viewModel.results[viewModel.selectedIndex].id
+        withAnimation(.easeOut(duration: 0.12)) {
+            proxy.scrollTo(selectedID, anchor: .center)
+        }
     }
 
     private func installLocalKeyMonitorIfNeeded() {

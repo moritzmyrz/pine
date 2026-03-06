@@ -371,6 +371,66 @@ final class BrowserViewModel: ObservableObject {
                 self?.newPrivateTab(focusAddressBar: true)
             },
             Command(
+                id: "reload",
+                title: "Reload",
+                subtitle: "Reload the current page",
+                keywords: ["refresh", "reload", "page"],
+                shortcutHint: "Cmd+R",
+                group: "Commands"
+            ) { [weak self] in
+                self?.reloadSelectedTab()
+            },
+            Command(
+                id: "back",
+                title: "Back",
+                subtitle: "Go back in history",
+                keywords: ["back", "previous", "history"],
+                shortcutHint: "Cmd+[",
+                group: "Commands"
+            ) { [weak self] in
+                self?.goBackSelectedTab()
+            },
+            Command(
+                id: "forward",
+                title: "Forward",
+                subtitle: "Go forward in history",
+                keywords: ["forward", "next", "history"],
+                shortcutHint: "Cmd+]",
+                group: "Commands"
+            ) { [weak self] in
+                self?.goForwardSelectedTab()
+            },
+            Command(
+                id: "close-tab",
+                title: "Close Tab",
+                subtitle: "Close the active tab",
+                keywords: ["close", "tab", "remove"],
+                shortcutHint: "Cmd+W",
+                group: "Commands"
+            ) { [weak self] in
+                self?.closeCurrentTab()
+            },
+            Command(
+                id: "reopen-closed-tab",
+                title: "Reopen Closed Tab",
+                subtitle: "Restore the last closed tab",
+                keywords: ["reopen", "undo close", "tab"],
+                shortcutHint: "Cmd+Shift+T",
+                group: "Commands"
+            ) { [weak self] in
+                self?.reopenClosedTab()
+            },
+            Command(
+                id: "focus-address-bar",
+                title: "Focus Address Bar",
+                subtitle: "Move focus to the URL bar",
+                keywords: ["focus", "address", "url", "omnibox"],
+                shortcutHint: "Cmd+L",
+                group: "Commands"
+            ) { [weak self] in
+                self?.requestAddressBarFocus(selectAll: true)
+            },
+            Command(
                 id: "toggle-split-view",
                 title: "Toggle Split View",
                 subtitle: "Enable or disable side-by-side tabs",
