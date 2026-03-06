@@ -237,6 +237,7 @@ final class BrowserViewModel: ObservableObject {
     func setRestorePreviousSessionEnabled(_ enabled: Bool) { sessionManager.setRestorePreviousSessionEnabled(enabled) }
     func setIncludePrivateTabsInSession(_ enabled: Bool) { sessionManager.setIncludePrivateTabsInSession(enabled) }
     func setShowCompactTabStrip(_ enabled: Bool) { sessionManager.setShowCompactTabStrip(enabled) }
+    func setShowBookmarksBar(_ enabled: Bool) { sessionManager.setShowBookmarksBar(enabled) }
     func setHideHTTPSInAddressBar(_ enabled: Bool) { sessionManager.setHideHTTPSInAddressBar(enabled) }
     func setHideWWWInAddressBar(_ enabled: Bool) { sessionManager.setHideWWWInAddressBar(enabled) }
     func setAlwaysShowFullURLInAddressBar(_ enabled: Bool) { sessionManager.setAlwaysShowFullURLInAddressBar(enabled) }
@@ -279,6 +280,7 @@ final class BrowserViewModel: ObservableObject {
     func showHistory() { requestOpenLibrary(.history) }
     func showBookmarks() { requestOpenLibrary(.bookmarks) }
     func showSettings() { requestOpenLibrary(.settings) }
+    func toggleBookmarksBar() { setShowBookmarksBar(!store.sessionSettings.showBookmarksBar) }
 
     func shouldAllowPermissionRequest(type: SitePermissionType, host: String?, completion: @escaping (Bool) -> Void) {
         permissionController.shouldAllowPermissionRequest(type: type, host: host, completion: completion)
@@ -488,10 +490,29 @@ final class BrowserViewModel: ObservableObject {
                 title: "Show Bookmarks",
                 subtitle: "Open bookmarks in library",
                 keywords: ["bookmarks", "saved", "favorites"],
-                shortcutHint: "Cmd+Shift+B",
                 group: "Commands"
             ) { [weak self] in
                 self?.showBookmarks()
+            },
+            Command(
+                id: "bookmark-current-tab",
+                title: "Bookmark Current Tab",
+                subtitle: "Add or remove bookmark for current tab",
+                keywords: ["bookmark", "star", "favorite"],
+                shortcutHint: "Cmd+B",
+                group: "Commands"
+            ) { [weak self] in
+                self?.toggleBookmarkForSelectedTab()
+            },
+            Command(
+                id: "toggle-bookmark-bar",
+                title: "Toggle Bookmark Bar",
+                subtitle: "Show or hide bookmarks bar",
+                keywords: ["bookmark", "bar", "rank"],
+                shortcutHint: "Cmd+Shift+B",
+                group: "Commands"
+            ) { [weak self] in
+                self?.toggleBookmarksBar()
             },
             Command(
                 id: "show-settings",
@@ -672,6 +693,18 @@ final class BrowserViewModel: ObservableObject {
             .sink { [weak self] notification in
                 guard self?.isCommandForCurrentWindow(notification) == true else { return }
                 self?.copyCleanLinkForSelectedTab()
+            }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineToggleBookmarkForCurrentTab)
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.toggleBookmarkForSelectedTab()
+            }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .pineToggleBookmarksBar)
+            .sink { [weak self] notification in
+                guard self?.isCommandForCurrentWindow(notification) == true else { return }
+                self?.toggleBookmarksBar()
             }
             .store(in: &cancellables)
         NotificationCenter.default.publisher(for: .pineToggleSplitView)

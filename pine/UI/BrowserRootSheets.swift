@@ -266,6 +266,10 @@ struct SettingsSheetView: View {
                         get: { viewModel.sessionSettings.showCompactTabStrip },
                         set: { viewModel.setShowCompactTabStrip($0) }
                     ))
+                    Toggle("Show bookmark bar", isOn: Binding(
+                        get: { viewModel.sessionSettings.showBookmarksBar },
+                        set: { viewModel.setShowBookmarksBar($0) }
+                    ))
                 }
 
                 Section("Address Bar") {

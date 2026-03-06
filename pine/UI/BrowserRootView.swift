@@ -103,6 +103,11 @@ struct BrowserRootView: View {
                     tabStrip
                 }
 
+                if viewModel.sessionSettings.showBookmarksBar {
+                    Divider()
+                    BookmarksBarView(viewModel: viewModel)
+                }
+
                 browserContentArea
 
                 if viewModel.downloadController.shouldShowShelf {

@@ -27,11 +27,15 @@ private struct LibrarySettingsContent: View {
 
     var body: some View {
         Form {
-            if shouldShowSection(keywords: ["appearance", "compact", "tabs"]) {
+            if shouldShowSection(keywords: ["appearance", "compact", "tabs", "bookmarks", "bar", "rank"]) {
                 Section("Appearance") {
                     Toggle("Show compact tab strip", isOn: Binding(
                         get: { viewModel.sessionSettings.showCompactTabStrip },
                         set: { viewModel.setShowCompactTabStrip($0) }
+                    ))
+                    Toggle("Show bookmark bar", isOn: Binding(
+                        get: { viewModel.sessionSettings.showBookmarksBar },
+                        set: { viewModel.setShowBookmarksBar($0) }
                     ))
                 }
             }

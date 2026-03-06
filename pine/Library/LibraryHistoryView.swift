@@ -10,6 +10,12 @@ struct LibraryHistoryView: View {
         formatter.dateStyle = .medium
         return formatter
     }()
+    private let visitDateTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }()
 
     var body: some View {
         List {
@@ -19,13 +25,19 @@ struct LibraryHistoryView: View {
                         Button {
                             BrowserWindowManager.shared.openURLInFrontmostWindow(entry.urlString)
                         } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.title)
-                                    .lineLimit(1)
-                                Text(entry.urlString)
-                                    .font(.caption)
+                            HStack(alignment: .top, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(entry.title)
+                                        .lineLimit(1)
+                                    Text(entry.urlString)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 6)
+                                Text(visitDateTimeFormatter.string(from: entry.date))
+                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
-                                    .lineLimit(1)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }

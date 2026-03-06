@@ -123,16 +123,16 @@ struct BrowserTopBar: View {
     private var overflowMenu: some View {
         Menu {
             Button("History") {
-                viewModel.store.isHistoryPresented = true
+                viewModel.showHistory()
             }
             Button("Bookmarks") {
-                viewModel.store.isBookmarksPresented = true
+                viewModel.showBookmarks()
             }
             Button("Downloads") {
-                viewModel.downloadController.showDownloadsSheet()
+                viewModel.showDownloads()
             }
             Button("Settings") {
-                viewModel.store.isSettingsPresented = true
+                viewModel.showSettings()
             }
 
             Divider()
@@ -163,6 +163,9 @@ struct BrowserTopBar: View {
 
             Button(viewModel.isCurrentPageBookmarked() ? "Remove Bookmark" : "Add Bookmark") {
                 viewModel.toggleBookmarkForSelectedTab()
+            }
+            Button(viewModel.sessionSettings.showBookmarksBar ? "Hide Bookmark Bar" : "Show Bookmark Bar") {
+                viewModel.toggleBookmarksBar()
             }
             Button("View Source") {
                 viewModel.viewSourceForSelectedTab()

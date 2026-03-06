@@ -35,4 +35,6 @@ extension Notification.Name {
     static let pineOpenCurrentPageInSafari = Notification.Name("pine.openCurrentPageInSafari")
     static let pineCopyCleanLink = Notification.Name("pine.copyCleanLink")
     static let pineOpenLibrary = Notification.Name("pine.openLibrary")
+    static let pineToggleBookmarkForCurrentTab = Notification.Name("pine.toggleBookmarkForCurrentTab")
+    static let pineToggleBookmarksBar = Notification.Name("pine.toggleBookmarksBar")
 }

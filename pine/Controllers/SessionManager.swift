@@ -88,6 +88,11 @@ final class SessionManager {
         sessionStore.saveSettings(store.sessionSettings)
     }
 
+    func setShowBookmarksBar(_ enabled: Bool) {
+        store.sessionSettings.showBookmarksBar = enabled
+        sessionStore.saveSettings(store.sessionSettings)
+    }
+
     func setHideHTTPSInAddressBar(_ enabled: Bool) {
         store.sessionSettings.hideHTTPSInAddressBar = enabled
         sessionStore.saveSettings(store.sessionSettings)

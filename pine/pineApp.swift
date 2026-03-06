@@ -75,10 +75,21 @@ struct pineApp: App {
             }
 
             CommandMenu("Bookmarks") {
+                Button("Bookmark Current Tab") {
+                    postWindowCommand(.pineToggleBookmarkForCurrentTab)
+                }
+                .keyboardShortcut("b", modifiers: .command)
+
+                Button("Toggle Bookmark Bar") {
+                    postWindowCommand(.pineToggleBookmarksBar)
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+
+                Divider()
+
                 Button("Show Bookmarks") {
                     openLibrary(.bookmarks)
                 }
-                .keyboardShortcut("b", modifiers: [.command, .shift])
             }
 
             CommandMenu("Downloads") {

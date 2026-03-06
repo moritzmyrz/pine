@@ -63,6 +63,7 @@ struct BrowserSettings: Codable {
     var restorePreviousSession: Bool
     var includePrivateTabsInSession: Bool
     var showCompactTabStrip: Bool
+    var showBookmarksBar: Bool
     var hideHTTPSInAddressBar: Bool
     var hideWWWInAddressBar: Bool
     var alwaysShowFullURLInAddressBar: Bool
@@ -74,6 +75,7 @@ struct BrowserSettings: Codable {
         restorePreviousSession: true,
         includePrivateTabsInSession: false,
         showCompactTabStrip: true,
+        showBookmarksBar: true,
         hideHTTPSInAddressBar: true,
         hideWWWInAddressBar: true,
         alwaysShowFullURLInAddressBar: false,
@@ -86,6 +88,7 @@ struct BrowserSettings: Codable {
         case restorePreviousSession
         case includePrivateTabsInSession
         case showCompactTabStrip
+        case showBookmarksBar
         case hideHTTPSInAddressBar
         case hideWWWInAddressBar
         case alwaysShowFullURLInAddressBar
@@ -98,6 +101,7 @@ struct BrowserSettings: Codable {
         restorePreviousSession: Bool,
         includePrivateTabsInSession: Bool,
         showCompactTabStrip: Bool,
+        showBookmarksBar: Bool,
         hideHTTPSInAddressBar: Bool,
         hideWWWInAddressBar: Bool,
         alwaysShowFullURLInAddressBar: Bool,
@@ -108,6 +112,7 @@ struct BrowserSettings: Codable {
         self.restorePreviousSession = restorePreviousSession
         self.includePrivateTabsInSession = includePrivateTabsInSession
         self.showCompactTabStrip = showCompactTabStrip
+        self.showBookmarksBar = showBookmarksBar
         self.hideHTTPSInAddressBar = hideHTTPSInAddressBar
         self.hideWWWInAddressBar = hideWWWInAddressBar
         self.alwaysShowFullURLInAddressBar = alwaysShowFullURLInAddressBar
@@ -121,6 +126,7 @@ struct BrowserSettings: Codable {
         restorePreviousSession = try container.decodeIfPresent(Bool.self, forKey: .restorePreviousSession) ?? true
         includePrivateTabsInSession = try container.decodeIfPresent(Bool.self, forKey: .includePrivateTabsInSession) ?? false
         showCompactTabStrip = try container.decodeIfPresent(Bool.self, forKey: .showCompactTabStrip) ?? true
+        showBookmarksBar = try container.decodeIfPresent(Bool.self, forKey: .showBookmarksBar) ?? true
         hideHTTPSInAddressBar = try container.decodeIfPresent(Bool.self, forKey: .hideHTTPSInAddressBar) ?? true
         hideWWWInAddressBar = try container.decodeIfPresent(Bool.self, forKey: .hideWWWInAddressBar) ?? true
         alwaysShowFullURLInAddressBar =
