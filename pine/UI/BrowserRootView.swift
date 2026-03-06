@@ -5,7 +5,10 @@ import UniformTypeIdentifiers
 struct BrowserRootView: View {
     @StateObject private var viewModel = BrowserViewModel()
     @State private var draggedTabID: UUID?
-    @FocusState private var isTabSearchFieldFocused: Bool
+    @State private var addressInput = ""
+    @State private var isSiteSettingsPresented = false
+    @State private var isTabsOverviewPresented = false
+    @FocusState private var isAddressFieldFocused: Bool
 
     var body: some View {
         configuredRootView
@@ -13,7 +16,6 @@ struct BrowserRootView: View {
 
     private var configuredRootView: some View {
         rootLayout
-            .animation(.easeInOut(duration: 0.15), value: viewModel.store.isTabSearchPresented)
             .sheet(isPresented: historySheetBinding) {
                 HistorySheetView(
                     historyStore: viewModel.historyStore,
@@ -44,6 +46,19 @@ struct BrowserRootView: View {
                     profilePendingDeletion: profilePendingDeletionBinding
                 )
             }
+            .sheet(isPresented: tabsOverviewSheetBinding) {
+                TabsOverviewSheetView(
+                    tabs: viewModel.sortedTabs,
+                    selectedTabID: viewModel.selectedTabID,
+                    onSelectTab: { tabID in
+                        viewModel.selectTab(id: tabID)
+                        isTabsOverviewPresented = false
+                    },
+                    onCloseTab: { tabID in
+                        viewModel.closeTab(id: tabID)
+                    }
+                )
+            }
             .alert("Delete Profile?", isPresented: profileDeleteConfirmationBinding, presenting: viewModel.store.profilePendingDeletion) { profile in
                 Button("Delete", role: .destructive) {
                     viewModel.deleteProfile(id: profile.id)
@@ -62,20 +77,27 @@ struct BrowserRootView: View {
                 viewModel.store.isBookmarksPresented = true
             }
             .onReceive(NotificationCenter.default.publisher(for: .pineShowTabSearch)) { _ in
-                viewModel.store.tabSearchQuery = ""
-                viewModel.store.isTabSearchPresented = true
-                isTabSearchFieldFocused = true
+                isTabsOverviewPresented = true
             }
     }
 
     private var rootLayout: some View {
         ZStack {
             VStack(spacing: 0) {
-                AddressBarView(viewModel: viewModel)
+                BrowserTopBar(
+                    viewModel: viewModel,
+                    addressInput: addressInputBinding,
+                    addressFieldFocus: $isAddressFieldFocused,
+                    isSiteSettingsPresented: siteSettingsPresentedBinding,
+                    isTabsOverviewPresented: tabsOverviewSheetBinding,
+                    submitAddressBar: submitAddressBar
+                )
                 loadingProgressBar
-                Divider()
-                tabStrip
-                Divider()
+
+                if viewModel.sessionSettings.showCompactTabStrip {
+                    Divider()
+                    tabStrip
+                }
 
                 if let selectedTab = viewModel.selectedTab {
                     if selectedTab.urlString == "about:blank" {
@@ -104,47 +126,6 @@ struct BrowserRootView: View {
                     )
                 }
             }
-            .toolbar {
-                ToolbarItemGroup {
-                    profileToolbarMenu
-
-                    Button("New Tab") {
-                        viewModel.newTab(focusAddressBar: true)
-                    }
-
-                    Button("New Private Tab") {
-                        viewModel.newPrivateTab(focusAddressBar: true)
-                    }
-
-                    Button("Close Tab") {
-                        viewModel.closeCurrentTab()
-                    }
-
-                    Button("History") {
-                        viewModel.store.isHistoryPresented = true
-                    }
-
-                    Button(viewModel.isCurrentPageBookmarked() ? "★" : "☆") {
-                        viewModel.toggleBookmarkForSelectedTab()
-                    }
-
-                    Button("Bookmarks") {
-                        viewModel.store.isBookmarksPresented = true
-                    }
-
-                    Button("Downloads") {
-                        viewModel.downloadController.showDownloadsSheet()
-                    }
-
-                    Button("Settings") {
-                        viewModel.store.isSettingsPresented = true
-                    }
-
-                    pageActionsToolbarMenu
-                    readingToolbarMenu
-                    sessionToolbarMenu
-                }
-            }
             .background {
                 Button("Focus Address") {
                     viewModel.requestAddressBarFocus(selectAll: true)
@@ -152,11 +133,28 @@ struct BrowserRootView: View {
                 .keyboardShortcut("l", modifiers: .command)
                 .hidden()
             }
-
-            if viewModel.store.isTabSearchPresented {
-                tabSearchOverlay
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                    .zIndex(10)
+        }
+        .onAppear {
+            addressInput = currentTabURL
+        }
+        .onChange(of: viewModel.selectedTabID) {
+            addressInput = currentTabURL
+        }
+        .onChange(of: currentTabURL) {
+            guard !isAddressFieldFocused else { return }
+            addressInput = currentTabURL
+        }
+        .onChange(of: isAddressFieldFocused) {
+            if !isAddressFieldFocused {
+                addressInput = currentTabURL
+            }
+        }
+        .onChange(of: viewModel.addressBarFocusToken) {
+            isAddressFieldFocused = true
+            guard viewModel.shouldSelectAllInAddressBar else { return }
+            DispatchQueue.main.async {
+                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                viewModel.consumeAddressBarSelectAllRequest()
             }
         }
     }
@@ -168,7 +166,7 @@ struct BrowserRootView: View {
                 .progressViewStyle(.linear)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.bottom, 6)
         }
     }
 
@@ -191,7 +189,7 @@ struct BrowserRootView: View {
 
     private var tabStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ForEach(viewModel.sortedTabs) { tab in
                     HStack(spacing: 6) {
                         if tab.isPinned {
@@ -253,7 +251,7 @@ struct BrowserRootView: View {
                         }
                     }
                     .padding(.horizontal, tab.isPinned ? 8 : 10)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 5)
                     .background(tab.id == viewModel.selectedTabID ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay {
@@ -301,77 +299,14 @@ struct BrowserRootView: View {
                     viewModel.newTab(focusAddressBar: true)
                 } label: {
                     Image(systemName: "plus")
-                        .padding(6)
+                        .padding(5)
                 }
                 .buttonStyle(.borderless)
             }
-            .padding(8)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
         }
-    }
-
-    private var tabSearchOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.28)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    viewModel.store.isTabSearchPresented = false
-                }
-
-            VStack(spacing: 10) {
-                TextField("Search tabs by title or URL", text: tabSearchQueryBinding)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($isTabSearchFieldFocused)
-
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4) {
-                        if filteredTabsForSearch.isEmpty {
-                            Text("No matching tabs")
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                        } else {
-                            ForEach(filteredTabsForSearch) { tab in
-                                Button {
-                                    viewModel.selectTab(id: tab.id)
-                                    viewModel.store.isTabSearchPresented = false
-                                } label: {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(tab.title)
-                                            .lineLimit(1)
-                                        Text(tab.urlString)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 6)
-                                    .background(Color.gray.opacity(0.1))
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-                .frame(maxHeight: 300)
-            }
-            .padding(14)
-            .frame(width: 560)
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .shadow(radius: 20)
-        }
-        .onAppear {
-            isTabSearchFieldFocused = true
-        }
-        .onExitCommand {
-            viewModel.store.isTabSearchPresented = false
-        }
-    }
-
-    private var filteredTabsForSearch: [Tab] {
-        viewModel.tabsMatching(query: viewModel.store.tabSearchQuery)
+        .background(Color.gray.opacity(0.06))
     }
 
     private func isRightMostTab(_ id: UUID) -> Bool {
@@ -405,91 +340,6 @@ struct BrowserRootView: View {
                 }
             }
         )
-    }
-
-    private var profileToolbarMenu: some View {
-        Menu {
-            Picker("Current Profile", selection: Binding(
-                get: { viewModel.currentProfileID },
-                set: { viewModel.selectProfile(id: $0) }
-            )) {
-                ForEach(viewModel.profiles) { profile in
-                    Text(profile.name).tag(profile.id)
-                }
-            }
-            Divider()
-            Button("Manage Profiles...") {
-                viewModel.store.isProfileManagementPresented = true
-            }
-        } label: {
-            Text("Profile: \(viewModel.currentProfile?.name ?? "Unknown")")
-        }
-    }
-
-    private var readerModeButtonTitle: String {
-        (viewModel.selectedTab?.isReaderModeEnabled == true) ? "Disable Reader Mode (Lite)" : "Enable Reader Mode (Lite)"
-    }
-
-    private var readingToolbarMenu: some View {
-        Menu("Reading") {
-            Button("Zoom In") {
-                viewModel.zoomInSelectedTab()
-            }
-            Button("Zoom Out") {
-                viewModel.zoomOutSelectedTab()
-            }
-            Button("Actual Size") {
-                viewModel.resetZoomSelectedTab()
-            }
-            Divider()
-            Button(readerModeButtonTitle) {
-                viewModel.toggleReaderModeForSelectedTab()
-            }
-        }
-    }
-
-    private var pageActionsToolbarMenu: some View {
-        Menu("...") {
-            Button("View Source") {
-                viewModel.viewSourceForSelectedTab()
-            }
-            Button("Open Current Page in Safari") {
-                viewModel.openSelectedPageInSafari()
-            }
-            Button("Copy Clean Link") {
-                viewModel.copyCleanLinkForSelectedTab()
-            }
-        }
-    }
-
-    private var sessionToolbarMenu: some View {
-        Menu("Session") {
-            Button("Reopen Closed Tab") {
-                viewModel.reopenClosedTab()
-            }
-
-            Divider()
-
-            Button(restoreSessionMenuTitle) {
-                viewModel.setRestorePreviousSessionEnabled(!viewModel.sessionSettings.restorePreviousSession)
-            }
-
-            Button(includePrivateTabsMenuTitle) {
-                viewModel.setIncludePrivateTabsInSession(!viewModel.sessionSettings.includePrivateTabsInSession)
-            }
-        }
-    }
-
-    private var restoreSessionMenuTitle: String {
-        viewModel.sessionSettings.restorePreviousSession
-            ? "Disable Restore Previous Session"
-            : "Enable Restore Previous Session"
-    }
-
-    private var includePrivateTabsMenuTitle: String {
-        viewModel.sessionSettings.includePrivateTabsInSession
-            ? "Disable Private Tabs in Session"
-            : "Enable Private Tabs in Session"
     }
 
     private var historySheetBinding: Binding<Bool> {
@@ -534,11 +384,33 @@ struct BrowserRootView: View {
         )
     }
 
-    private var tabSearchQueryBinding: Binding<String> {
+    private var tabsOverviewSheetBinding: Binding<Bool> {
         Binding(
-            get: { viewModel.store.tabSearchQuery },
-            set: { viewModel.store.tabSearchQuery = $0 }
+            get: { isTabsOverviewPresented },
+            set: { isTabsOverviewPresented = $0 }
         )
+    }
+
+    private var addressInputBinding: Binding<String> {
+        Binding(
+            get: { addressInput },
+            set: { addressInput = $0 }
+        )
+    }
+
+    private var siteSettingsPresentedBinding: Binding<Bool> {
+        Binding(
+            get: { isSiteSettingsPresented },
+            set: { isSiteSettingsPresented = $0 }
+        )
+    }
+
+    private var currentTabURL: String {
+        viewModel.selectedTab?.urlString ?? ""
+    }
+
+    private func submitAddressBar() {
+        viewModel.loadSelectedTab(from: addressInput)
     }
 }
 
@@ -858,6 +730,13 @@ private struct SettingsSheetView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Appearance") {
+                    Toggle("Show compact tab strip", isOn: Binding(
+                        get: { viewModel.sessionSettings.showCompactTabStrip },
+                        set: { viewModel.setShowCompactTabStrip($0) }
+                    ))
+                }
+
                 Section("Session") {
                     Toggle("Restore previous session", isOn: Binding(
                         get: { viewModel.sessionSettings.restorePreviousSession },

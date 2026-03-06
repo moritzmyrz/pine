@@ -136,6 +136,13 @@ final class NavigationController {
         webView.reload()
     }
 
+    func stopLoadingSelectedTab() {
+        guard let selectedTabID = store.selectedTabID,
+              let webView = webViews[selectedTabID] else { return }
+        webView.stopLoading()
+        syncTabState(from: webView, for: selectedTabID)
+    }
+
     func zoomInSelectedTab() { adjustZoomForSelectedTab(delta: 0.1) }
     func zoomOutSelectedTab() { adjustZoomForSelectedTab(delta: -0.1) }
 

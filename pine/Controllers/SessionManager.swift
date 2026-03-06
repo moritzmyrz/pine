@@ -67,6 +67,11 @@ final class SessionManager {
         persistSession()
     }
 
+    func setShowCompactTabStrip(_ enabled: Bool) {
+        store.sessionSettings.showCompactTabStrip = enabled
+        sessionStore.saveSettings(store.sessionSettings)
+    }
+
     func persistSession() {
         guard store.sessionSettings.restorePreviousSession else { return }
         let now = Date()

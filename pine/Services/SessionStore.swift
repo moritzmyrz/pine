@@ -19,6 +19,7 @@ struct BrowserSessionSnapshot: Codable {
 struct BrowserSettings: Codable {
     var restorePreviousSession: Bool
     var includePrivateTabsInSession: Bool
+    var showCompactTabStrip: Bool
     var currentProfileID: UUID?
     var enableWebInspectorInDebugBuilds: Bool
     var enableWebInspectorInReleaseBuilds: Bool
@@ -26,6 +27,7 @@ struct BrowserSettings: Codable {
     static let `default` = BrowserSettings(
         restorePreviousSession: true,
         includePrivateTabsInSession: false,
+        showCompactTabStrip: true,
         currentProfileID: nil,
         enableWebInspectorInDebugBuilds: true,
         enableWebInspectorInReleaseBuilds: false
@@ -34,6 +36,7 @@ struct BrowserSettings: Codable {
     private enum CodingKeys: String, CodingKey {
         case restorePreviousSession
         case includePrivateTabsInSession
+        case showCompactTabStrip
         case currentProfileID
         case enableWebInspectorInDebugBuilds
         case enableWebInspectorInReleaseBuilds
@@ -42,12 +45,14 @@ struct BrowserSettings: Codable {
     init(
         restorePreviousSession: Bool,
         includePrivateTabsInSession: Bool,
+        showCompactTabStrip: Bool,
         currentProfileID: UUID?,
         enableWebInspectorInDebugBuilds: Bool,
         enableWebInspectorInReleaseBuilds: Bool
     ) {
         self.restorePreviousSession = restorePreviousSession
         self.includePrivateTabsInSession = includePrivateTabsInSession
+        self.showCompactTabStrip = showCompactTabStrip
         self.currentProfileID = currentProfileID
         self.enableWebInspectorInDebugBuilds = enableWebInspectorInDebugBuilds
         self.enableWebInspectorInReleaseBuilds = enableWebInspectorInReleaseBuilds
@@ -57,6 +62,7 @@ struct BrowserSettings: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         restorePreviousSession = try container.decodeIfPresent(Bool.self, forKey: .restorePreviousSession) ?? true
         includePrivateTabsInSession = try container.decodeIfPresent(Bool.self, forKey: .includePrivateTabsInSession) ?? false
+        showCompactTabStrip = try container.decodeIfPresent(Bool.self, forKey: .showCompactTabStrip) ?? true
         currentProfileID = try container.decodeIfPresent(UUID.self, forKey: .currentProfileID)
         enableWebInspectorInDebugBuilds =
             try container.decodeIfPresent(Bool.self, forKey: .enableWebInspectorInDebugBuilds) ?? true

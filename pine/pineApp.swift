@@ -63,7 +63,7 @@ struct pineApp: App {
             }
 
             CommandMenu("Tabs") {
-                Button("Tab Search") {
+                Button("Tabs Overview") {
                     NotificationCenter.default.post(name: .pineShowTabSearch, object: nil)
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])

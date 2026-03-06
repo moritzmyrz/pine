@@ -148,6 +148,7 @@ final class BrowserViewModel: ObservableObject {
     func profileName(for profileID: UUID) -> String { profileManager.profileName(for: profileID) }
     func setRestorePreviousSessionEnabled(_ enabled: Bool) { sessionManager.setRestorePreviousSessionEnabled(enabled) }
     func setIncludePrivateTabsInSession(_ enabled: Bool) { sessionManager.setIncludePrivateTabsInSession(enabled) }
+    func setShowCompactTabStrip(_ enabled: Bool) { sessionManager.setShowCompactTabStrip(enabled) }
     func selectProfile(id: UUID) { profileManager.selectProfile(id: id) }
     @discardableResult func createProfile(named name: String?) -> UUID { profileManager.createProfile(named: name) }
     func renameProfile(id: UUID, to newName: String) { profileManager.renameProfile(id: id, to: newName) }
@@ -194,6 +195,7 @@ final class BrowserViewModel: ObservableObject {
     func goBackSelectedTab() { navigationController.goBackSelectedTab() }
     func goForwardSelectedTab() { navigationController.goForwardSelectedTab() }
     func reloadSelectedTab() { navigationController.reloadSelectedTab() }
+    func stopLoadingSelectedTab() { navigationController.stopLoadingSelectedTab() }
     func zoomInSelectedTab() { navigationController.zoomInSelectedTab() }
     func zoomOutSelectedTab() { navigationController.zoomOutSelectedTab() }
     func resetZoomSelectedTab() { navigationController.resetZoomSelectedTab() }
