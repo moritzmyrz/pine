@@ -20,23 +20,37 @@ struct BrowserSettings: Codable {
     var restorePreviousSession: Bool
     var includePrivateTabsInSession: Bool
     var currentProfileID: UUID?
+    var enableWebInspectorInDebugBuilds: Bool
+    var enableWebInspectorInReleaseBuilds: Bool
 
     static let `default` = BrowserSettings(
         restorePreviousSession: true,
         includePrivateTabsInSession: false,
-        currentProfileID: nil
+        currentProfileID: nil,
+        enableWebInspectorInDebugBuilds: true,
+        enableWebInspectorInReleaseBuilds: false
     )
 
     private enum CodingKeys: String, CodingKey {
         case restorePreviousSession
         case includePrivateTabsInSession
         case currentProfileID
+        case enableWebInspectorInDebugBuilds
+        case enableWebInspectorInReleaseBuilds
     }
 
-    init(restorePreviousSession: Bool, includePrivateTabsInSession: Bool, currentProfileID: UUID?) {
+    init(
+        restorePreviousSession: Bool,
+        includePrivateTabsInSession: Bool,
+        currentProfileID: UUID?,
+        enableWebInspectorInDebugBuilds: Bool,
+        enableWebInspectorInReleaseBuilds: Bool
+    ) {
         self.restorePreviousSession = restorePreviousSession
         self.includePrivateTabsInSession = includePrivateTabsInSession
         self.currentProfileID = currentProfileID
+        self.enableWebInspectorInDebugBuilds = enableWebInspectorInDebugBuilds
+        self.enableWebInspectorInReleaseBuilds = enableWebInspectorInReleaseBuilds
     }
 
     init(from decoder: any Decoder) throws {
@@ -44,6 +58,10 @@ struct BrowserSettings: Codable {
         restorePreviousSession = try container.decodeIfPresent(Bool.self, forKey: .restorePreviousSession) ?? true
         includePrivateTabsInSession = try container.decodeIfPresent(Bool.self, forKey: .includePrivateTabsInSession) ?? false
         currentProfileID = try container.decodeIfPresent(UUID.self, forKey: .currentProfileID)
+        enableWebInspectorInDebugBuilds =
+            try container.decodeIfPresent(Bool.self, forKey: .enableWebInspectorInDebugBuilds) ?? true
+        enableWebInspectorInReleaseBuilds =
+            try container.decodeIfPresent(Bool.self, forKey: .enableWebInspectorInReleaseBuilds) ?? false
     }
 }
 

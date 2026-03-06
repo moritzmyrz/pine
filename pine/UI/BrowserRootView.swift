@@ -147,6 +147,7 @@ struct BrowserRootView: View {
                         isSettingsPresented = true
                     }
 
+                    pageActionsToolbarMenu
                     readingToolbarMenu
                     sessionToolbarMenu
                 }
@@ -450,6 +451,20 @@ struct BrowserRootView: View {
             Divider()
             Button(readerModeButtonTitle) {
                 viewModel.toggleReaderModeForSelectedTab()
+            }
+        }
+    }
+
+    private var pageActionsToolbarMenu: some View {
+        Menu("...") {
+            Button("View Source") {
+                viewModel.viewSourceForSelectedTab()
+            }
+            Button("Open Current Page in Safari") {
+                viewModel.openSelectedPageInSafari()
+            }
+            Button("Copy Clean Link") {
+                viewModel.copyCleanLinkForSelectedTab()
             }
         }
     }
@@ -831,6 +846,20 @@ private struct SettingsSheetView: View {
                         }
                     }
                     Text("Basic mode uses a conservative built-in WebKit rule list to block common third-party trackers.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Developer") {
+                    Toggle("Enable Web Inspector in debug builds", isOn: Binding(
+                        get: { viewModel.sessionSettings.enableWebInspectorInDebugBuilds },
+                        set: { viewModel.setEnableWebInspectorInDebugBuilds($0) }
+                    ))
+                    Toggle("Enable Web Inspector in release builds", isOn: Binding(
+                        get: { viewModel.sessionSettings.enableWebInspectorInReleaseBuilds },
+                        set: { viewModel.setEnableWebInspectorInReleaseBuilds($0) }
+                    ))
+                    Text("Release build inspector access is optional and off by default.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

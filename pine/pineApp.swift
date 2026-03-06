@@ -119,6 +119,23 @@ struct pineApp: App {
                     NotificationCenter.default.post(name: .pineToggleReaderMode, object: nil)
                 }
             }
+
+            CommandMenu("Page") {
+                Button("View Source") {
+                    NotificationCenter.default.post(name: .pineViewSource, object: nil)
+                }
+                .keyboardShortcut("u", modifiers: [.command, .option])
+
+                Button("Open Current Page in Safari") {
+                    NotificationCenter.default.post(name: .pineOpenCurrentPageInSafari, object: nil)
+                }
+                .keyboardShortcut("o", modifiers: [.command, .option])
+
+                Button("Copy Clean Link") {
+                    NotificationCenter.default.post(name: .pineCopyCleanLink, object: nil)
+                }
+                .keyboardShortcut("c", modifiers: [.command, .option, .shift])
+            }
         }
     }
 }

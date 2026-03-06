@@ -229,6 +229,24 @@ final class BrowserViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        NotificationCenter.default.publisher(for: .pineViewSource)
+            .sink { [weak self] _ in
+                self?.viewSourceForSelectedTab()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineOpenCurrentPageInSafari)
+            .sink { [weak self] _ in
+                self?.openSelectedPageInSafari()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .pineCopyCleanLink)
+            .sink { [weak self] _ in
+                self?.copyCleanLinkForSelectedTab()
+            }
+            .store(in: &cancellables)
+
         NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
             .sink { [weak self] _ in
                 self?.persistSession()
@@ -655,6 +673,40 @@ final class BrowserViewModel: ObservableObject {
         contentBlockerService.setMode(mode)
     }
 
+    func setEnableWebInspectorInDebugBuilds(_ enabled: Bool) {
+        sessionSettings.enableWebInspectorInDebugBuilds = enabled
+        sessionStore.saveSettings(sessionSettings)
+        applyInspectablePreferenceToAllWebViews()
+    }
+
+    func setEnableWebInspectorInReleaseBuilds(_ enabled: Bool) {
+        sessionSettings.enableWebInspectorInReleaseBuilds = enabled
+        sessionStore.saveSettings(sessionSettings)
+        applyInspectablePreferenceToAllWebViews()
+    }
+
+    func viewSourceForSelectedTab() {
+        guard let urlString = selectedPageURLString(),
+              let url = URL(string: urlString),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
+            return
+        }
+        _ = newTab(urlString: "view-source:\(url.absoluteString)", shouldSelect: true, shouldLoad: true)
+    }
+
+    func openSelectedPageInSafari() {
+        guard let urlString = selectedPageURLString(), let url = URL(string: urlString) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    func copyCleanLinkForSelectedTab() {
+        guard let urlString = selectedPageURLString() else { return }
+        let cleaned = cleanedURLStringConservatively(urlString) ?? urlString
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(cleaned, forType: .string)
+    }
+
     func shouldAllowPermissionRequest(
         type: SitePermissionType,
         host: String?,
@@ -718,6 +770,7 @@ final class BrowserViewModel: ObservableObject {
         }
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.isInspectable = shouldEnableWebInspector()
         webViews[tabID] = webView
         attachObservers(to: webView, tabID: tabID)
         applyStoredPageSettings(for: tabID, in: webView)
@@ -1287,5 +1340,44 @@ final class BrowserViewModel: ObservableObject {
         for webView in webViews.values {
             contentBlockerService.apply(to: webView.configuration.userContentController)
         }
+    }
+
+    private func applyInspectablePreferenceToAllWebViews() {
+        let enabled = shouldEnableWebInspector()
+        for webView in webViews.values {
+            webView.isInspectable = enabled
+        }
+    }
+
+    private func shouldEnableWebInspector() -> Bool {
+#if DEBUG
+        return sessionSettings.enableWebInspectorInDebugBuilds
+#else
+        return sessionSettings.enableWebInspectorInReleaseBuilds
+#endif
+    }
+
+    private func cleanedURLStringConservatively(_ input: String) -> String? {
+        guard let url = URL(string: input), var components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
+            return nil
+        }
+        guard let queryItems = components.queryItems, !queryItems.isEmpty else {
+            return input
+        }
+
+        let knownTrackingKeys: Set<String> = ["fbclid", "gclid"]
+        let filtered = queryItems.filter { item in
+            let key = item.name.lowercased()
+            if key.hasPrefix("utm_") {
+                return false
+            }
+            if knownTrackingKeys.contains(key) {
+                return false
+            }
+            return true
+        }
+
+        components.queryItems = filtered.isEmpty ? nil : filtered
+        return components.url?.absoluteString ?? input
     }
 }
