@@ -275,10 +275,10 @@ final class BrowserViewModel: ObservableObject {
     func viewSourceForSelectedTab() { navigationController.viewSourceForSelectedTab() }
     func openSelectedPageInSafari() { navigationController.openSelectedPageInSafari() }
     func copyCleanLinkForSelectedTab() { navigationController.copyCleanLinkForSelectedTab() }
-    func showDownloads() { downloadController.showDownloadsSheet() }
-    func showHistory() { store.isHistoryPresented = true }
-    func showBookmarks() { store.isBookmarksPresented = true }
-    func showSettings() { store.isSettingsPresented = true }
+    func showDownloads() { requestOpenLibrary(.downloads) }
+    func showHistory() { requestOpenLibrary(.history) }
+    func showBookmarks() { requestOpenLibrary(.bookmarks) }
+    func showSettings() { requestOpenLibrary(.settings) }
 
     func shouldAllowPermissionRequest(type: SitePermissionType, host: String?, completion: @escaping (Bool) -> Void) {
         permissionController.shouldAllowPermissionRequest(type: type, host: host, completion: completion)
@@ -467,7 +467,7 @@ final class BrowserViewModel: ObservableObject {
             Command(
                 id: "show-downloads",
                 title: "Show Downloads",
-                subtitle: "Open the downloads sheet",
+                subtitle: "Open the downloads library",
                 keywords: ["downloads", "files", "transfer"],
                 group: "Commands"
             ) { [weak self] in
@@ -476,7 +476,7 @@ final class BrowserViewModel: ObservableObject {
             Command(
                 id: "show-history",
                 title: "Show History",
-                subtitle: "Open browsing history",
+                subtitle: "Open history in library",
                 keywords: ["history", "visited", "pages"],
                 shortcutHint: "Cmd+Y",
                 group: "Commands"
@@ -486,7 +486,7 @@ final class BrowserViewModel: ObservableObject {
             Command(
                 id: "show-bookmarks",
                 title: "Show Bookmarks",
-                subtitle: "Open saved bookmarks",
+                subtitle: "Open bookmarks in library",
                 keywords: ["bookmarks", "saved", "favorites"],
                 shortcutHint: "Cmd+Shift+B",
                 group: "Commands"
@@ -496,7 +496,7 @@ final class BrowserViewModel: ObservableObject {
             Command(
                 id: "show-settings",
                 title: "Settings",
-                subtitle: "Open app settings",
+                subtitle: "Open settings in library",
                 keywords: ["settings", "preferences", "options"],
                 shortcutHint: "Cmd+,",
                 group: "Commands"
@@ -504,6 +504,14 @@ final class BrowserViewModel: ObservableObject {
                 self?.showSettings()
             }
         ])
+    }
+
+    private func requestOpenLibrary(_ section: LibrarySection) {
+        NotificationCenter.default.post(
+            name: .pineOpenLibrary,
+            object: nil,
+            userInfo: [LibraryCommandUserInfoKey.section: section.rawValue]
+        )
     }
 
     private func loadInitialState() {

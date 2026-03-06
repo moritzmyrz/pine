@@ -12,12 +12,20 @@ import SwiftUI
 struct pineApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
+    @StateObject private var libraryNavigation = LibraryNavigationState.shared
 
     var body: some Scene {
         WindowGroup(id: "browser-window") {
             BrowserRootView()
         }
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    openLibrary(.settings)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+
             CommandGroup(replacing: .newItem) {
                 Button("New Window") {
                     openWindow(id: "browser-window")
@@ -61,16 +69,22 @@ struct pineApp: App {
 
             CommandMenu("History") {
                 Button("Show History") {
-                    postWindowCommand(.pineShowHistory)
+                    openLibrary(.history)
                 }
                 .keyboardShortcut("y", modifiers: .command)
             }
 
             CommandMenu("Bookmarks") {
                 Button("Show Bookmarks") {
-                    postWindowCommand(.pineShowBookmarks)
+                    openLibrary(.bookmarks)
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
+            }
+
+            CommandMenu("Downloads") {
+                Button("Show Downloads") {
+                    openLibrary(.downloads)
+                }
             }
 
             CommandMenu("Tabs") {
@@ -173,6 +187,10 @@ struct pineApp: App {
                     .disabled(true)
             }
         }
+
+        Window("Pine Library", id: "pine-library") {
+            PineLibraryRootView()
+        }
     }
 
     private func postWindowCommand(_ name: Notification.Name, userInfo: [String: Any] = [:]) {
@@ -180,6 +198,11 @@ struct pineApp: App {
         var payload = userInfo
         payload[AppCommandUserInfoKey.windowNumber] = windowNumber
         NotificationCenter.default.post(name: name, object: nil, userInfo: payload)
+    }
+
+    private func openLibrary(_ section: LibrarySection) {
+        libraryNavigation.open(section)
+        openWindow(id: "pine-library")
     }
 }
 

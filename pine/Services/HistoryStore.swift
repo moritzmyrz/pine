@@ -31,6 +31,14 @@ final class HistoryStore: ObservableObject {
         entries.insert(entry, at: 0)
     }
 
+    func clearAll() {
+        entries.removeAll()
+    }
+
+    func clearEntries(since date: Date) {
+        entries.removeAll { $0.date >= date }
+    }
+
     private func normalized(urlString: String) -> String {
         guard var components = URLComponents(string: urlString) else {
             return urlString

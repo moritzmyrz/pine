@@ -2,16 +2,24 @@ import AppKit
 import SwiftUI
 
 struct BrowserRootView: View {
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: BrowserViewModel
     @StateObject private var commandPaletteViewModel: CommandPaletteViewModel
     @StateObject private var addressBarViewModel: AddressBarViewModel
     @State private var draggedTabID: UUID?
+    @State private var observedWindowNumber: Int?
     @State private var isSiteSettingsPresented = false
     @State private var shouldRestoreAddressFocusAfterPalette = false
     @FocusState private var isAddressFieldFocused: Bool
 
     init() {
-        let browserViewModel = BrowserViewModel(shouldRestoreSession: WindowLaunchState.consumeShouldRestoreSession())
+        let sharedStores = SharedStores.shared
+        let browserViewModel = BrowserViewModel(
+            shouldRestoreSession: WindowLaunchState.consumeShouldRestoreSession(),
+            historyStore: sharedStores.historyStore,
+            bookmarksStore: sharedStores.bookmarksStore,
+            downloadManager: sharedStores.downloadManager
+        )
         _viewModel = StateObject(wrappedValue: browserViewModel)
         _commandPaletteViewModel = StateObject(
             wrappedValue: CommandPaletteViewModel(browserViewModel: browserViewModel)
@@ -25,30 +33,6 @@ struct BrowserRootView: View {
 
     private var configuredRootView: some View {
         rootLayout
-            .sheet(isPresented: historySheetBinding) {
-                HistorySheetView(
-                    historyStore: viewModel.historyStore,
-                    onSelect: { entry in
-                        viewModel.loadHistoryEntryInSelectedTab(entry)
-                        viewModel.store.isHistoryPresented = false
-                    }
-                )
-            }
-            .sheet(isPresented: bookmarksSheetBinding) {
-                BookmarksSheetView(
-                    bookmarksStore: viewModel.bookmarksStore,
-                    onSelect: { bookmark in
-                        viewModel.loadBookmarkInSelectedTab(bookmark)
-                        viewModel.store.isBookmarksPresented = false
-                    }
-                )
-            }
-            .sheet(isPresented: downloadsSheetBinding) {
-                DownloadsSheetView(downloadManager: viewModel.downloadManager)
-            }
-            .sheet(isPresented: settingsSheetBinding) {
-                SettingsSheetView(viewModel: viewModel)
-            }
             .sheet(isPresented: profileManagementSheetBinding) {
                 ProfileManagementSheet(
                     viewModel: viewModel,
@@ -71,7 +55,7 @@ struct BrowserRootView: View {
             }
             .background(
                 WindowObserver { window in
-                    viewModel.setTargetWindowNumber(window?.windowNumber)
+                    handleWindowChange(window)
                     viewModel.onRequestWindowClose = { [weak window] in
                         if let window {
                             window.performClose(nil)
@@ -82,8 +66,22 @@ struct BrowserRootView: View {
                 }
             )
             .onDisappear {
+                if let observedWindowNumber {
+                    BrowserWindowManager.shared.unregister(windowNumber: observedWindowNumber)
+                }
+                observedWindowNumber = nil
                 viewModel.setTargetWindowNumber(nil)
                 viewModel.onRequestWindowClose = nil
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .pineOpenLibrary)) { notification in
+                let keyOrMainWindowNumber = NSApp.keyWindow?.windowNumber ?? NSApp.mainWindow?.windowNumber
+                guard keyOrMainWindowNumber == observedWindowNumber else { return }
+
+                if let rawSection = notification.userInfo?[LibraryCommandUserInfoKey.section] as? String,
+                   let section = LibrarySection(rawValue: rawSection) {
+                    LibraryNavigationState.shared.open(section)
+                }
+                openWindow(id: "pine-library")
             }
     }
 
@@ -111,7 +109,7 @@ struct BrowserRootView: View {
                     Divider()
                     DownloadsShelfView(
                         downloadManager: viewModel.downloadManager,
-                        openDownloadsSheet: { viewModel.downloadController.showDownloadsSheet() },
+                        openDownloadsSheet: { viewModel.showDownloads() },
                         closeShelf: { viewModel.downloadController.dismissShelf() }
                     )
                 }
@@ -337,34 +335,6 @@ struct BrowserRootView: View {
         )
     }
 
-    private var historySheetBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.store.isHistoryPresented },
-            set: { viewModel.store.isHistoryPresented = $0 }
-        )
-    }
-
-    private var bookmarksSheetBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.store.isBookmarksPresented },
-            set: { viewModel.store.isBookmarksPresented = $0 }
-        )
-    }
-
-    private var downloadsSheetBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.store.isDownloadsPresented },
-            set: { viewModel.store.isDownloadsPresented = $0 }
-        )
-    }
-
-    private var settingsSheetBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.store.isSettingsPresented },
-            set: { viewModel.store.isSettingsPresented = $0 }
-        )
-    }
-
     private var profileManagementSheetBinding: Binding<Bool> {
         Binding(
             get: { viewModel.store.isProfileManagementPresented },
@@ -426,6 +396,21 @@ struct BrowserRootView: View {
 
     private func submitAddressBar() {
         viewModel.loadSelectedTab(from: addressBarViewModel.inputText)
+    }
+
+    private func handleWindowChange(_ window: NSWindow?) {
+        let windowNumber = window?.windowNumber
+        viewModel.setTargetWindowNumber(windowNumber)
+
+        guard observedWindowNumber != windowNumber else { return }
+
+        if let observedWindowNumber {
+            BrowserWindowManager.shared.unregister(windowNumber: observedWindowNumber)
+        }
+        if let windowNumber {
+            BrowserWindowManager.shared.register(windowNumber: windowNumber, viewModel: viewModel)
+        }
+        observedWindowNumber = windowNumber
     }
 }
 

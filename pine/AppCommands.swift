@@ -4,6 +4,10 @@ enum AppCommandUserInfoKey {
     static let windowNumber = "windowNumber"
 }
 
+enum LibraryCommandUserInfoKey {
+    static let section = "section"
+}
+
 extension Notification.Name {
     static let pineNewTab = Notification.Name("pine.newTab")
     static let pineNewPrivateTab = Notification.Name("pine.newPrivateTab")
@@ -30,4 +34,5 @@ extension Notification.Name {
     static let pineViewSource = Notification.Name("pine.viewSource")
     static let pineOpenCurrentPageInSafari = Notification.Name("pine.openCurrentPageInSafari")
     static let pineCopyCleanLink = Notification.Name("pine.copyCleanLink")
+    static let pineOpenLibrary = Notification.Name("pine.openLibrary")
 }

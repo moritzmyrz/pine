@@ -376,6 +376,16 @@ final class DownloadManager: NSObject, ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([destination])
     }
 
+    func openFile(itemID: UUID) {
+        guard let destination = items.first(where: { $0.id == itemID })?.destination else { return }
+        guard fileManager.fileExists(atPath: destination.path) else { return }
+        NSWorkspace.shared.open(destination)
+    }
+
+    func clearCompleted() {
+        items.removeAll { $0.status == .completed }
+    }
+
     func canPause(_ item: DownloadItem) -> Bool {
         guard item.status == .downloading || item.status == .pending else { return false }
         let hasWK = wkContexts.contains(where: { $0.value.itemID == item.id })
@@ -397,6 +407,12 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     func canReveal(_ item: DownloadItem) -> Bool {
+        guard let destination = item.destination else { return false }
+        return fileManager.fileExists(atPath: destination.path)
+    }
+
+    func canOpen(_ item: DownloadItem) -> Bool {
+        guard item.status == .completed else { return false }
         guard let destination = item.destination else { return false }
         return fileManager.fileExists(atPath: destination.path)
     }
